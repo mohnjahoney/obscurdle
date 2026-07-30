@@ -1,0 +1,336 @@
+// Archived 2026-07-29 before the single-Gaussian noise-model rebuild.
+const CANDLE_FIELD_SOURCE = `
+uniform vec2 uCandleSource;
+uniform float uTime;
+uniform float uViewportAspect;
+uniform float uBaseIntensity;
+uniform float uRadiusScale;
+uniform float uShortVariationWeight;
+uniform float uLongVariationWeight;
+uniform float uFluctuationMagnitude;
+uniform float uHalfIntensityRadius;
+uniform float uReachRadius;
+uniform float uReachFadeStartsAt;
+uniform float uSourceJitter;
+uniform float uFastVariationAmount;
+uniform float uRadiusVariationAmount;
+uniform float uSlowPulseSeconds;
+uniform float uFinalPhaseWeight;
+uniform float uExtinction;
+uniform float uFinalPulseSeconds;
+uniform float uFinalPulseRevealStrength;
+uniform float uFinalPulseRadiusScale;
+uniform float uFinalFastFlickerMultiplier;
+
+float candleHash(float value) {
+  return fract(sin(value * 127.1) * 43758.5453123);
+}
+
+float candleHash2(vec2 point) {
+  return fract(sin(dot(point, vec2(127.1, 311.7))) * 43758.5453123);
+}
+
+float candleSmoothNoise(float value) {
+  float cell = floor(value);
+  float local = fract(value);
+  local = local * local * (3.0 - 2.0 * local);
+  return mix(candleHash(cell), candleHash(cell + 1.0), local);
+}
+
+float candleSpatialNoise(vec2 point) {
+  vec2 cell = floor(point);
+  vec2 local = fract(point);
+  local = local * local * (3.0 - 2.0 * local);
+
+  float a = candleHash2(cell);
+  float b = candleHash2(cell + vec2(1.0, 0.0));
+  float c = candleHash2(cell + vec2(0.0, 1.0));
+  float d = candleHash2(cell + vec2(1.0, 1.0));
+
+  return mix(mix(a, b, local.x), mix(c, d, local.x), local.y);
+}
+
+float candleSlowPulse(float time) {
+  float phase = time / uSlowPulseSeconds;
+  float cell = floor(phase);
+  float local = fract(phase);
+  float center = mix(0.18, 0.82, candleHash(cell + 3.7));
+  float width = mix(0.055, 0.18, candleHash(cell + 8.1));
+  float distanceFromCenter = (local - center) / width;
+  float bump = exp(-distanceFromCenter * distanceFromCenter * 2.4);
+  float direction = mix(-1.0, 0.62, candleHash(cell + 13.4));
+  return bump * direction;
+}
+
+vec2 candleFinalPulse(float time) {
+  float phase = time / uFinalPulseSeconds;
+  float cell = floor(phase);
+  float local = fract(phase);
+  float center = mix(0.28, 0.72, candleHash(cell + 101.3));
+  float width = mix(0.1, 0.2, candleHash(cell + 117.9));
+  float distanceFromCenter = (local - center) / width;
+  float shape = exp(-distanceFromCenter * distanceFromCenter * 2.2);
+  float amplitude = mix(0.78, 1.0, candleHash(cell + 137.1));
+  float radiusVariation = mix(0.88, 1.08, candleHash(cell + 149.6));
+  return vec2(shape * amplitude, radiusVariation);
+}
+
+float candleRadialFalloff(
+  float distanceFromCenter,
+  float halfIntensityRadius,
+  float reachRadius
+) {
+  float safeHalfRadius = max(halfIntensityRadius, 0.001);
+  float gaussianCore = exp(
+    -0.69314718056 *
+    pow(distanceFromCenter / safeHalfRadius, 2.0)
+  );
+  float reachCutoff = 1.0 - smoothstep(
+    reachRadius * uReachFadeStartsAt,
+    reachRadius,
+    distanceFromCenter
+  );
+  return clamp(gaussianCore * reachCutoff, 0.0, 1.0);
+}
+
+float candleIllumination(vec2 uv) {
+  vec2 metric = vec2(uViewportAspect, 1.0);
+  float fastNoise =
+    candleSmoothNoise(uTime * 6.4) * 2.0 - 1.0;
+  float slowerWander =
+    candleSmoothNoise(uTime * 1.7 + 19.0) * 2.0 - 1.0;
+  float slowPulse = candleSlowPulse(uTime);
+  float offsetSlowPulse = candleSlowPulse(uTime + 1.9);
+  float wanderMagnitude =
+    uSourceJitter * (1.0 + uFluctuationMagnitude * 1.8);
+  vec2 sourceWander = vec2(
+    (fastNoise + slowerWander * 0.45) * uShortVariationWeight +
+      slowPulse * 1.7 * uLongVariationWeight,
+    (candleSmoothNoise(uTime * 4.9 + 41.0) * 2.0 - 1.0) *
+      uShortVariationWeight +
+      offsetSlowPulse * 1.45 * uLongVariationWeight
+  ) * wanderMagnitude;
+  vec2 source = uCandleSource + sourceWander;
+
+  float distanceFromCandle = length((uv - source) * metric);
+  float radiusNoise =
+    fastNoise * 0.42 * uShortVariationWeight +
+    slowerWander * 0.18 +
+    slowPulse *
+      uFluctuationMagnitude *
+      uLongVariationWeight;
+  float temporalRadiusScale = clamp(
+    1.0 + radiusNoise * uRadiusVariationAmount,
+    0.82,
+    1.18
+  );
+  float sharedRadiusScale = uRadiusScale * temporalRadiusScale;
+  float radialLight = candleRadialFalloff(
+    distanceFromCandle,
+    uHalfIntensityRadius * sharedRadiusScale,
+    uReachRadius * sharedRadiusScale
+  );
+
+  float shortVariation =
+    fastNoise *
+    uFastVariationAmount *
+    uShortVariationWeight *
+    mix(
+      1.0,
+      uFinalFastFlickerMultiplier,
+      uFinalPhaseWeight
+    );
+  float longVariation =
+    slowPulse *
+    uFluctuationMagnitude *
+    uLongVariationWeight;
+  float flameIntensity = clamp(
+    uBaseIntensity * (1.0 + shortVariation + longVariation),
+    0.0,
+    1.0
+  );
+
+  vec2 finalPulse = candleFinalPulse(uTime);
+  float broadRadiusScale =
+    uFinalPulseRadiusScale *
+    finalPulse.y;
+  float broadLight = candleRadialFalloff(
+    distanceFromCandle,
+    uHalfIntensityRadius * broadRadiusScale,
+    uReachRadius * broadRadiusScale
+  );
+  float broadPulseIllumination =
+    broadLight *
+    finalPulse.x *
+    uFinalPhaseWeight *
+    uExtinction *
+    uFinalPulseRevealStrength;
+
+  // return clamp(
+  //   max(radialLight * flameIntensity, broadPulseIllumination),
+  //   0.0,
+  //   1.0
+  // );
+  return max(radialLight * flameIntensity, broadPulseIllumination);
+}
+`
+
+function shaderHeader(): string {
+  return `
+#version 100
+#pragma phaserTemplate(shaderName)
+
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+
+varying vec2 outTexCoord;
+
+${CANDLE_FIELD_SOURCE}
+`
+}
+
+export function buildCandleMaskFragmentShader(): string {
+  return `${shaderHeader()}
+void main() {
+  vec2 uv = vec2(outTexCoord.x, 1.0 - outTexCoord.y);
+  float illumination = candleIllumination(uv);
+  gl_FragColor = vec4(vec3(illumination), illumination);
+}
+`
+}
+
+export function buildCandleGlowFragmentShader(): string {
+  return `${shaderHeader()}
+uniform vec3 uGlowCoolColor;
+uniform vec3 uGlowWarmColor;
+uniform float uWarmth;
+uniform float uColorVariationAmount;
+uniform float uGlowAlpha;
+
+void main() {
+  vec2 uv = vec2(outTexCoord.x, 1.0 - outTexCoord.y);
+  float glowAlpha = candleIllumination(uv) * uGlowAlpha;
+  float colorNoise =
+    candleSmoothNoise(uTime * 2.35 + 211.0) * 2.0 - 1.0;
+  float variedWarmth = clamp(
+    uWarmth + colorNoise * uColorVariationAmount,
+    0.0,
+    1.0
+  );
+  vec3 glowColor = mix(
+    uGlowCoolColor,
+    uGlowWarmColor,
+    variedWarmth
+  );
+  gl_FragColor = vec4(glowColor * glowAlpha, glowAlpha);
+}
+`
+}
+
+export function buildCandleSmokeFragmentShader(): string {
+  return `${shaderHeader()}
+uniform float uSmokeAmount;
+uniform float uSmokeSputter;
+uniform vec3 uSmokeColor;
+uniform float uSmokeMaximumAlpha;
+uniform float uSmokePlumeHeight;
+uniform float uSmokeBaseWidth;
+uniform float uSmokeTopWidth;
+uniform float uSmokeDrift;
+uniform float uSmokeTurbulence;
+uniform float uSmokeRiseSpeed;
+
+void main() {
+  vec2 uv = vec2(outTexCoord.x, 1.0 - outTexCoord.y);
+  float heightAboveFlame = uCandleSource.y - uv.y;
+  float progress = clamp(
+    heightAboveFlame / uSmokePlumeHeight,
+    0.0,
+    1.0
+  );
+  float verticalMask =
+    smoothstep(0.015, 0.075, heightAboveFlame) *
+    (1.0 - smoothstep(0.78, 1.0, progress));
+
+  float risingTime = uTime * uSmokeRiseSpeed;
+  float broadDrift =
+    sin(progress * 8.5 - risingTime * 2.7) *
+    uSmokeDrift *
+    (0.25 + progress * 0.75);
+  float fineDrift =
+    sin(progress * 24.0 + risingTime * 5.2) *
+    uSmokeTurbulence *
+    (0.2 + progress);
+  float noisyDrift =
+    (candleSpatialNoise(vec2(
+      progress * 5.0 - risingTime,
+      risingTime * 0.7
+    )) - 0.5) *
+    uSmokeTurbulence *
+    1.7;
+  float centerX =
+    uCandleSource.x + broadDrift + fineDrift + noisyDrift;
+
+  float width = mix(
+    uSmokeBaseWidth,
+    uSmokeTopWidth,
+    progress
+  );
+  float lateral =
+    abs((uv.x - centerX) * uViewportAspect) /
+    max(width, 0.001);
+  float primaryWisp = exp(-lateral * lateral * 2.2);
+  float secondaryCenter =
+    centerX -
+    uSmokeTurbulence *
+    (0.8 + 0.5 * sin(progress * 17.0 + risingTime * 3.1));
+  float secondaryLateral =
+    abs((uv.x - secondaryCenter) * uViewportAspect) /
+    max(width * 0.58, 0.001);
+  float secondaryWisp =
+    exp(-secondaryLateral * secondaryLateral * 2.8) * 0.42;
+
+  float flowingNoise = candleSpatialNoise(vec2(
+    progress * 11.0 - risingTime * 6.0,
+    progress * 3.7 + risingTime
+  ));
+  float continuousSmoke = mix(0.46, 1.0, flowingNoise);
+  float brokenSmoke = smoothstep(0.38, 0.82, flowingNoise);
+  float breakup = mix(
+    continuousSmoke,
+    brokenSmoke,
+    uSmokeSputter
+  );
+  float sputterPulse = smoothstep(
+    0.34,
+    0.76,
+    candleSmoothNoise(uTime * 2.8 + 73.0)
+  );
+  float temporalAmount = mix(
+    1.0,
+    0.18 + sputterPulse * 1.08,
+    uSmokeSputter
+  );
+
+  float density =
+    max(primaryWisp, secondaryWisp) *
+    verticalMask *
+    breakup *
+    temporalAmount;
+  float smokeAlpha = clamp(
+    density * uSmokeAmount * uSmokeMaximumAlpha,
+    0.0,
+    uSmokeMaximumAlpha
+  );
+
+  // Phaser's normal blend path expects premultiplied alpha.
+  gl_FragColor = vec4(
+    uSmokeColor * smokeAlpha,
+    smokeAlpha
+  );
+}
+`
+}

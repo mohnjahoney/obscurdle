@@ -1,0 +1,107 @@
+// Archived 2026-07-29 before the single-Gaussian noise-model rebuild.
+import { CANDLELIGHT_CONFIG } from "./candlelightConfig"
+
+export interface CandleBurnState {
+  progress: number
+  baseIntensity: number
+  radiusScale: number
+  warmth: number
+  shortVariationWeight: number
+  longVariationWeight: number
+  fluctuationMagnitude: number
+  smokeAmount: number
+  smokeSputter: number
+  finalPhaseWeight: number
+  extinction: number
+}
+
+function clamp01(value: number): number {
+  return Math.min(Math.max(value, 0), 1)
+}
+
+function smootherStep(start: number, end: number, value: number): number {
+  if (start === end) return value < start ? 0 : 1
+
+  const amount = clamp01((value - start) / (end - start))
+  return amount * amount * amount * (amount * (amount * 6 - 15) + 10)
+}
+
+function mix(start: number, end: number, amount: number): number {
+  return start + (end - start) * amount
+}
+
+type BurnProfile = readonly [number, number, number, number, number]
+
+function profileValue(
+  progress: number,
+  values: BurnProfile,
+): number {
+  const [phaseOneEnd, phaseTwoEnd, phaseThreeEnd, phaseFourEnd] =
+    CANDLELIGHT_CONFIG.phaseEnds
+
+  if (progress <= phaseOneEnd) {
+    return mix(
+      values[0],
+      values[1],
+      smootherStep(0, phaseOneEnd, progress),
+    )
+  }
+  if (progress <= phaseTwoEnd) {
+    return mix(
+      values[1],
+      values[2],
+      smootherStep(phaseOneEnd, phaseTwoEnd, progress),
+    )
+  }
+  if (progress <= phaseThreeEnd) {
+    return mix(
+      values[2],
+      values[3],
+      smootherStep(phaseTwoEnd, phaseThreeEnd, progress),
+    )
+  }
+
+  return mix(
+    values[3],
+    values[4],
+    smootherStep(phaseThreeEnd, phaseFourEnd, progress),
+  )
+}
+
+export function candleBurnStateAt(elapsedMs: number): CandleBurnState {
+  const progress = clamp01(elapsedMs / CANDLELIGHT_CONFIG.burnDurationMs)
+  const profile = CANDLELIGHT_CONFIG.burnProfile
+  const finalPhase = CANDLELIGHT_CONFIG.finalPhase
+  const finalPhaseWeight = smootherStep(
+    finalPhase.blendStartsAt,
+    finalPhase.reachesFullStrengthAt,
+    progress,
+  )
+  const extinction =
+    1 -
+    smootherStep(finalPhase.extinctionStartsAt, 1, progress)
+
+  return {
+    progress,
+    baseIntensity:
+      profileValue(progress, profile.baseIntensity) * extinction,
+    radiusScale: profileValue(progress, profile.radiusScale),
+    warmth: profileValue(progress, profile.warmth),
+    shortVariationWeight: profileValue(
+      progress,
+      profile.shortVariationWeight,
+    ),
+    longVariationWeight: profileValue(
+      progress,
+      profile.longVariationWeight,
+    ),
+    fluctuationMagnitude: profileValue(
+      progress,
+      profile.fluctuationMagnitude,
+    ),
+    smokeAmount: profileValue(progress, profile.smokeAmount),
+    smokeSputter: profileValue(progress, profile.smokeSputter),
+    finalPhaseWeight,
+    extinction,
+  }
+}

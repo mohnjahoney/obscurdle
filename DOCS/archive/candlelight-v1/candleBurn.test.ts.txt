@@ -1,0 +1,74 @@
+// Archived 2026-07-29 before the single-Gaussian noise-model rebuild.
+import { describe, expect, it } from "vitest"
+import { CANDLELIGHT_CONFIG } from "./candlelightConfig"
+import { candleBurnStateAt } from "./candleBurn"
+
+describe("candle burn state", () => {
+  it("begins bright, broad, cool, and with only a hint of smoke", () => {
+    const state = candleBurnStateAt(0)
+
+    expect(state.progress).toBe(0)
+    expect(state.baseIntensity).toBe(1)
+    expect(state.radiusScale).toBe(1)
+    expect(state.warmth).toBe(
+      CANDLELIGHT_CONFIG.burnProfile.warmth[0],
+    )
+    expect(state.shortVariationWeight).toBe(1)
+    expect(state.longVariationWeight).toBe(0)
+    expect(state.smokeAmount).toBeGreaterThan(0)
+    expect(state.smokeSputter).toBe(0)
+    expect(state.finalPhaseWeight).toBe(0)
+  })
+
+  it("remains mostly lit through phase one", () => {
+    const state = candleBurnStateAt(CANDLELIGHT_CONFIG.burnDurationMs * 0.25)
+
+    expect(state.baseIntensity).toBeGreaterThan(0.9)
+    expect(state.radiusScale).toBeGreaterThan(0.9)
+  })
+
+  it("reduces the field gradually through the long middle phases", () => {
+    const phaseTwo = candleBurnStateAt(
+      CANDLELIGHT_CONFIG.burnDurationMs * 0.75,
+    )
+    const phaseThree = candleBurnStateAt(
+      CANDLELIGHT_CONFIG.burnDurationMs * 0.95,
+    )
+
+    expect(phaseThree.baseIntensity).toBeLessThan(
+      phaseTwo.baseIntensity,
+    )
+    expect(phaseThree.radiusScale).toBeLessThan(phaseTwo.radiusScale)
+    expect(phaseThree.warmth).toBeGreaterThan(phaseTwo.warmth)
+    expect(phaseThree.fluctuationMagnitude).toBeGreaterThan(
+      phaseTwo.fluctuationMagnitude,
+    )
+    expect(phaseThree.smokeAmount).toBeGreaterThan(
+      phaseTwo.smokeAmount,
+    )
+  })
+
+  it("activates broad pulses in phase four before extinguishing", () => {
+    const phaseFour = candleBurnStateAt(
+      CANDLELIGHT_CONFIG.burnDurationMs * 0.98,
+    )
+    const state = candleBurnStateAt(
+      CANDLELIGHT_CONFIG.burnDurationMs,
+    )
+
+    expect(phaseFour.finalPhaseWeight).toBe(1)
+    expect(phaseFour.extinction).toBe(1)
+    expect(phaseFour.radiusScale).toBe(
+      CANDLELIGHT_CONFIG.minimumRadiusScale,
+    )
+    expect(phaseFour.smokeAmount).toBeGreaterThan(0.9)
+    expect(state.progress).toBe(1)
+    expect(state.baseIntensity).toBe(0)
+    expect(state.radiusScale).toBe(
+      CANDLELIGHT_CONFIG.minimumRadiusScale,
+    )
+    expect(state.smokeAmount).toBe(1)
+    expect(state.smokeSputter).toBe(1)
+    expect(state.extinction).toBe(0)
+  })
+})
