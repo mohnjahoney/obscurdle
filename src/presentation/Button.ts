@@ -19,7 +19,7 @@ export class Button extends Phaser.GameObjects.Container {
     scene.add.existing(this)
 
     const width = options.compact
-      ? GAME_LAYOUT.button.width * 0.72
+      ? GAME_LAYOUT.button.width * 0.9
       : GAME_LAYOUT.button.width
     const height = options.compact
       ? GAME_LAYOUT.button.height * 0.78

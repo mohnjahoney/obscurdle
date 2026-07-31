@@ -46,35 +46,51 @@ body {
   display: block;
 }
 
-.flashlight-debug-control {
+.flashlight-debug-control,
+.magnifying-glass-debug-control {
   position: absolute;
   z-index: 10;
   top: 8px;
-  left: 50%;
+  left: 10px;
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 3px 10px;
-  width: calc(100% - 20px);
+  width: calc(100% - 110px);
   padding: 6px 10px;
   color: #211f1a;
   background: rgb(248 244 232 / 94%);
   border: 1px solid rgb(33 31 26 / 35%);
-  transform: translateX(-50%);
 }
 
 .flashlight-debug-control label,
-.flashlight-debug-control output {
+.flashlight-debug-control output,
+.magnifying-glass-debug-control label,
+.magnifying-glass-debug-control output {
   font-size: 11px;
   font-weight: bold;
 }
 
-.flashlight-debug-control output {
+.flashlight-debug-control output,
+.magnifying-glass-debug-control output {
   font-variant-numeric: tabular-nums;
 }
 
-.flashlight-debug-control input {
+.flashlight-debug-control input,
+.magnifying-glass-debug-control .debug-slider {
   grid-column: 1 / -1;
   width: 100%;
+  margin: 0;
+}
+
+.magnifying-glass-debug-control .debug-toggle-row {
+  display: flex;
+  grid-column: 1 / -1;
+  gap: 7px;
+  align-items: center;
+  font-weight: normal;
+}
+
+.magnifying-glass-debug-control .debug-toggle-row input {
   margin: 0;
 }
 

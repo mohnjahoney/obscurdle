@@ -7,6 +7,7 @@ import {
   INK_BLOOM_FRAGMENT_SHADER,
 } from "./inkBloom"
 import { createTileVisual, type TileVisual } from "./tileVisual"
+import type { BoardPresentationId } from "./board/BoardPresentation"
 
 interface InkBloomRevealOptions {
   scene: Phaser.Scene
@@ -14,6 +15,7 @@ interface InkBloomRevealOptions {
   letter: string
   result: LetterResult
   pigmentFrame: number
+  presentationId: BoardPresentationId
   delay: number
   legibleProgress?: number
   onLegible?(): void
@@ -52,6 +54,7 @@ export class InkBloomReveal {
       options.letter,
       options.result,
       options.pigmentFrame,
+      options.presentationId,
     )
 
     this.evaluatedLayer = options.scene.add

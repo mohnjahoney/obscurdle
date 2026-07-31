@@ -3,6 +3,11 @@ import { Puzzle, type PuzzleStatus, type SubmitFailureReason } from "../core/Puz
 import { BundledWordSource } from "../core/words"
 import type { ModeContext, ModeId, ObscuringMode } from "../modes/ObscuringMode"
 import { modeDefinition } from "../modes/registry"
+import {
+  markPlayHistory,
+  menuStateFromHistory,
+} from "../navigation/browserHistory"
+import { GlobalNavigation } from "../navigation/GlobalNavigation"
 import { BoardView } from "../presentation/BoardView"
 import { Button } from "../presentation/Button"
 import { KeyboardView } from "../presentation/KeyboardView"
@@ -35,6 +40,8 @@ export class PlayScene extends Phaser.Scene {
   private modeId: ModeId = "plain"
   private mode!: ObscuringMode
   private modeContext!: ModeContext
+  private navigation!: GlobalNavigation
+  private navigationOpen = false
 
   constructor() {
     super("play")
@@ -50,12 +57,16 @@ export class PlayScene extends Phaser.Scene {
   }
 
   create(): void {
+    markPlayHistory(this.modeId)
     configureLogicalCamera(this)
     new PaperBackdrop(this)
     this.puzzle = new Puzzle(wordSource.chooseAnswer(), wordSource.allowedWords())
 
-    this.createMasthead()
-    this.board = new BoardView(this)
+    const mastheadTitle = this.createMasthead()
+    this.board = new BoardView(
+      this,
+      modeDefinition(this.modeId).boardPresentation,
+    )
     this.mode = modeDefinition(this.modeId).create()
     this.modeContext = { scene: this, board: this.board }
     this.mode.start(this.modeContext)
@@ -63,11 +74,15 @@ export class PlayScene extends Phaser.Scene {
       this.mode.stop(this.modeContext)
     })
 
-    this.keyboardView = new KeyboardView(this, {
-      onLetter: (letter) => this.typeLetter(letter),
-      onEnter: () => this.submit(),
-      onBackspace: () => this.backspace(),
-    })
+    this.keyboardView = new KeyboardView(
+      this,
+      {
+        onLetter: (letter) => this.typeLetter(letter),
+        onEnter: () => this.submit(),
+        onBackspace: () => this.backspace(),
+      },
+      modeDefinition(this.modeId).keyboardPresentation,
+    )
 
     this.messageText = this.add
       .text(GAME_LAYOUT.width / 2, GAME_LAYOUT.status.y, "", {
@@ -94,6 +109,22 @@ export class PlayScene extends Phaser.Scene {
       )
       .setOrigin(0.5)
 
+    this.navigation = new GlobalNavigation(this, {
+      currentEdition: modeDefinition(this.modeId).mastheadLabel,
+      hasProgress: () =>
+        this.puzzle.currentGuess.length > 0 || this.puzzle.guesses.length > 0,
+      onNewPuzzle: () => this.scene.restart(),
+      onChooseEdition: () => this.scene.start("menu"),
+      onOpenChange: (open) => {
+        this.navigationOpen = open
+      },
+    })
+    mastheadTitle
+      .setInteractive({ useHandCursor: true })
+      .on(Phaser.Input.Events.POINTER_DOWN, () => {
+        this.navigation.requestChooseEdition()
+      })
+
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
       if (event.key === "Enter") {
         this.submit()
@@ -104,6 +135,10 @@ export class PlayScene extends Phaser.Scene {
       }
     })
 
+    window.addEventListener("popstate", this.handlePopState)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener("popstate", this.handlePopState)
+    })
     this.cameras.main.fadeIn(GAME_MOTION.scene.fadeDuration)
   }
 
@@ -111,8 +146,8 @@ export class PlayScene extends Phaser.Scene {
     this.mode?.update(this.modeContext, deltaMs)
   }
 
-  private createMasthead(): void {
-    this.add
+  private createMasthead(): Phaser.GameObjects.Text {
+    const title = this.add
       .text(GAME_LAYOUT.page.inset, GAME_LAYOUT.masthead.titleY, "OBSCURDLE", {
         fontFamily: GAME_STYLE.type.displayFamily,
         fontSize: `${GAME_STYLE.type.tileSize}px`,
@@ -121,22 +156,6 @@ export class PlayScene extends Phaser.Scene {
         resolution: RENDER_SCALE,
       })
       .setOrigin(0, 0.5)
-
-    this.add
-      .text(
-        GAME_LAYOUT.width - GAME_LAYOUT.page.inset,
-        GAME_LAYOUT.masthead.titleY,
-        modeDefinition(this.modeId).mastheadLabel,
-        {
-          fontFamily: GAME_STYLE.type.bodyFamily,
-          fontSize: `${GAME_STYLE.type.sectionSize}px`,
-          fontStyle: "bold",
-          color: GAME_STYLE.textColor.mutedInk,
-          letterSpacing: 2,
-          resolution: RENDER_SCALE,
-        },
-      )
-      .setOrigin(1, 0.5)
 
     this.add
       .text(
@@ -152,20 +171,34 @@ export class PlayScene extends Phaser.Scene {
         },
       )
       .setOrigin(0.5)
+
+    return title
   }
 
   private typeLetter(letter: string): void {
-    if (!this.acceptingInput || !this.puzzle.typeLetter(letter)) return
+    if (
+      this.navigationOpen ||
+      !this.acceptingInput ||
+      !this.puzzle.typeLetter(letter)
+    ) {
+      return
+    }
     this.renderCurrentRow()
   }
 
   private backspace(): void {
-    if (!this.acceptingInput || !this.puzzle.backspace()) return
+    if (
+      this.navigationOpen ||
+      !this.acceptingInput ||
+      !this.puzzle.backspace()
+    ) {
+      return
+    }
     this.renderCurrentRow()
   }
 
   private submit(): void {
-    if (!this.acceptingInput) return
+    if (this.navigationOpen || !this.acceptingInput) return
 
     const result = this.puzzle.submitGuess((context) => {
       return this.mode.transformSubmittedWord?.(context) ?? context.enteredWord
@@ -352,5 +385,17 @@ export class PlayScene extends Phaser.Scene {
 
       this.input.keyboard?.once("keydown-ENTER", () => this.scene.restart())
     })
+  }
+
+  private readonly handlePopState = (event: PopStateEvent): void => {
+    if (this.navigation.isOpen) {
+      this.navigation.close()
+      markPlayHistory(this.modeId)
+      return
+    }
+
+    if (menuStateFromHistory(event.state)) {
+      this.scene.start("menu")
+    }
   }
 }

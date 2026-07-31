@@ -8,12 +8,17 @@ import {
 import { GAME_LAYOUT } from "../style/layout"
 import { RENDER_SCALE } from "../style/rendering"
 import { PIGMENT_TEXTURE_KEY } from "./pigmentTextures"
+import {
+  boardPresentation,
+  type BoardPresentationId,
+} from "./board/BoardPresentation"
 
 export interface TileVisual {
   face: Phaser.GameObjects.Rectangle
   pigment: Phaser.GameObjects.Image
   letter: Phaser.GameObjects.Text
   objects: Phaser.GameObjects.GameObject[]
+  presentationId: BoardPresentationId
 }
 
 export function createTileVisual(
@@ -21,6 +26,7 @@ export function createTileVisual(
   letter = "",
   state: EvaluationVisualState = "empty",
   pigmentFrame = 0,
+  presentationId: BoardPresentationId = "standard",
 ): TileVisual {
   const size = GAME_LAYOUT.board.tileSize
   const face = scene.add.rectangle(0, 0, size, size)
@@ -42,6 +48,7 @@ export function createTileVisual(
     pigment,
     letter: letterText,
     objects: [face, pigment, letterText],
+    presentationId,
   }
   applyTileVisualState(visual, state)
 
@@ -52,6 +59,7 @@ export function applyTileVisualState(
   visual: TileVisual,
   state: EvaluationVisualState,
 ): void {
+  const presentation = boardPresentation(visual.presentationId)
   const isEvaluated =
     state === "correct" || state === "present" || state === "absent"
   const canRenderPigment =
@@ -60,15 +68,22 @@ export function applyTileVisualState(
   visual.face.setFillStyle(
     canRenderPigment ? GAME_STYLE.color.emptyTile : tileFill(state),
   )
-  visual.face.setStrokeStyle(
-    state === "filled"
-      ? GAME_STYLE.tile.activeBorderWidth
-      : GAME_STYLE.tile.borderWidth,
-    state === "correct" || state === "present" || state === "absent"
-      ? tileFill(state)
-      : GAME_STYLE.color.rule,
-    GAME_STYLE.alpha.rule,
+  visual.face.setAlpha(
+    presentation.showUnevaluatedFace || isEvaluated ? 1 : 0,
   )
+  if (!presentation.showTileOutline) {
+    visual.face.setStrokeStyle()
+  } else {
+    visual.face.setStrokeStyle(
+      state === "filled"
+        ? GAME_STYLE.tile.activeBorderWidth
+        : GAME_STYLE.tile.borderWidth,
+      state === "correct" || state === "present" || state === "absent"
+        ? tileFill(state)
+        : GAME_STYLE.color.rule,
+      GAME_STYLE.alpha.rule,
+    )
+  }
   visual.pigment
     .setTint(tileFill(state))
     .setAlpha(GAME_STYLE.tile.pigmentOpacity)

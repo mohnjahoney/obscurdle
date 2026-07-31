@@ -4,6 +4,7 @@ import { GAME_LAYOUT, boardWidth } from "../style/layout"
 import { GAME_MOTION } from "../style/motion"
 import { choosePigmentTextureFrames } from "./pigmentTextures"
 import { TileView } from "./TileView"
+import type { BoardPresentationId } from "./board/BoardPresentation"
 
 interface RevealRowOptions {
   word?: string
@@ -14,7 +15,10 @@ interface RevealRowOptions {
 export class BoardView {
   private readonly rows: TileView[][] = []
 
-  constructor(scene: Phaser.Scene) {
+  constructor(
+    scene: Phaser.Scene,
+    presentationId: BoardPresentationId = "standard",
+  ) {
     const startX = (GAME_LAYOUT.width - boardWidth()) / 2 + GAME_LAYOUT.board.tileSize / 2
     const startY = GAME_LAYOUT.board.top + GAME_LAYOUT.board.tileSize / 2
     const step = GAME_LAYOUT.board.tileSize + GAME_LAYOUT.board.gap
@@ -32,6 +36,7 @@ export class BoardView {
             startX + column * step,
             startY + row * step,
             pigmentFrames[tileIndex++]!,
+            presentationId,
           ),
         )
       }

@@ -1,15 +1,21 @@
 import type Phaser from "phaser"
 import type { GuessTransformContext } from "../core/Puzzle"
 import type { BoardView } from "../presentation/BoardView"
+import type { BoardPresentationId } from "../presentation/board/BoardPresentation"
+import type { KeyboardPresentationId } from "../presentation/keyboard/KeyboardPresentation"
 
-export type ModeId =
-  | "plain"
-  | "fading-ink"
-  | "flashlight"
-  | "candlelight"
-  | "sneaking-tiles"
-  | "magnifying-glass"
-  | "misprint"
+export const MODE_IDS = [
+  "plain",
+  "fading-ink",
+  "flashlight",
+  "candlelight",
+  "sneaking-tiles",
+  "magnifying-glass",
+  "misprint",
+  "vintage-typewriter",
+] as const
+
+export type ModeId = (typeof MODE_IDS)[number]
 
 export type KeyboardRevealTiming = "immediate" | "letter-legible"
 
@@ -33,5 +39,7 @@ export interface ModeDefinition {
   menuLabel: string
   mastheadLabel: string
   footerLabel: string
+  boardPresentation?: BoardPresentationId
+  keyboardPresentation?: KeyboardPresentationId
   create(): ObscuringMode
 }

@@ -39,7 +39,8 @@ export const MAGNIFYING_GLASS_CONFIG = {
   },
   burn: {
     gridSize: 14,
-    heatGainPerSecond: 0.9,
+    textureSize: 100,
+    heatGainPerSecond: 1.8,
     brownStartsAt: 0.28,
     charStartsAt: 1.15,
     maximumHeat: 2.8,
@@ -49,6 +50,20 @@ export const MAGNIFYING_GLASS_CONFIG = {
     charColor: 0x211a15,
     maximumBrownAlpha: 0.34,
     maximumCharAlpha: 0.92,
-    eligibilityDelayAfterRevealMs: 60,
+    mark: {
+      positionJitter: 0.42,
+      minimumRadiusInCells: 0.5,
+      maximumRadiusInCells: 2,
+      centerOpacityRatio: 0.5,
+      middleOpacityRatio: 0.7,
+      darkEdgeStart: 0.82,
+    },
+    debugRateControl: {
+      enabled: true,
+      minimum: 0.2,
+      maximum: 5,
+      step: 0.1,
+      automaticMotionInitiallyEnabled: true,
+    },
   },
 } as const

@@ -24,6 +24,9 @@ export const GAME_MOTION = {
     enterDuration: 220,
     startScale: 0.96,
   },
+  navigation: {
+    enterDuration: 180,
+  },
   message: {
     duration: 1_650,
   },

@@ -26,4 +26,19 @@ describe("magnifying-glass motion", () => {
       expect(position.x).toBeLessThan(boardRight)
     }
   })
+
+  it("resumes automatic movement from a manually chosen position", () => {
+    const motion = new LensMotionModel(17)
+    motion.setSubmittedRows(4)
+    const manualPosition = { x: 120, y: 250 }
+
+    motion.reposition(manualPosition)
+
+    expect(motion.position).toEqual(manualPosition)
+    const resumedPosition = motion.update(16)
+    expect(Math.hypot(
+      resumedPosition.x - manualPosition.x,
+      resumedPosition.y - manualPosition.y,
+    )).toBeLessThan(1)
+  })
 })

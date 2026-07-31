@@ -1,96 +1,34 @@
 import { normalizeWord } from "./evaluateGuess"
+import nytAdditionalGuesses from "./wordlists/nytAdditionalGuesses.json"
+import nytAnswers from "./wordlists/nytAnswers.json"
 
 export interface WordSource {
   chooseAnswer(): string
   allowedWords(): ReadonlySet<string>
 }
 
-const ANSWERS = [
-  "ALERT",
-  "APPLE",
-  "BEACH",
-  "BLEND",
-  "BLOOM",
-  "BRAVE",
-  "CHAIR",
-  "CHARM",
-  "CLOUD",
-  "CRANE",
-  "DREAM",
-  "EARTH",
-  "FIELD",
-  "FLAME",
-  "FLOUR",
-  "FRAME",
-  "FRESH",
-  "GRAIN",
-  "GRAPE",
-  "GREEN",
-  "HONEY",
-  "HOUSE",
-  "JUICE",
-  "LEMON",
-  "LIGHT",
-  "MAGIC",
-  "MAPLE",
-  "MELON",
-  "METAL",
-  "MUSIC",
-  "OCEAN",
-  "PAINT",
-  "PAPER",
-  "PIANO",
-  "PLANT",
-  "PLATE",
-  "POINT",
-  "RADIO",
-  "RIVER",
-  "SCALE",
-  "SHARE",
-  "SHORE",
-  "SLATE",
-  "SMILE",
-  "SPARK",
-  "SPICE",
-  "STAGE",
-  "STONE",
-  "STORM",
-  "TABLE",
-  "TASTE",
-  "TIGER",
-  "TOAST",
-  "TRAIN",
-  "WATER",
-  "WHALE",
-  "WHITE",
-  "WORLD",
-] as const
+const ANSWERS = nytAnswers.map(normalizeWord)
+const ALL_WORDS = new Set(
+  [...nytAnswers, ...nytAdditionalGuesses].map(normalizeWord),
+)
 
-const EXTRA_GUESSES = [
-  "ADIEU",
-  "AROSE",
-  "AUDIO",
-  "CARES",
-  "CIGAR",
-  "IRATE",
-  "LEAST",
-  "RAISE",
-  "RATES",
-  "REACT",
-  "ROAST",
-  "STARE",
-  "TEARS",
-  "TRACE",
-] as const
+function firstAnswer(): string {
+  const answer = ANSWERS[0]
+  if (answer === undefined) {
+    throw new Error("The bundled answer list must contain at least one word")
+  }
+  return answer
+}
 
-const ALL_WORDS = new Set([...ANSWERS, ...EXTRA_GUESSES].map(normalizeWord))
+const DEFAULT_ANSWER = firstAnswer()
 
 export class BundledWordSource implements WordSource {
   private previousAnswer: string | undefined
 
   chooseAnswer(): string {
     const candidates = ANSWERS.filter((word) => word !== this.previousAnswer)
-    const answer = candidates[Math.floor(Math.random() * candidates.length)] ?? ANSWERS[0]
+    const answer =
+      candidates[Math.floor(Math.random() * candidates.length)] ?? DEFAULT_ANSWER
     this.previousAnswer = answer
     return answer
   }

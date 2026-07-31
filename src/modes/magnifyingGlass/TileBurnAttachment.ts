@@ -25,18 +25,36 @@ function cellRandom(seed: number, index: number, channel: number): number {
   return value - Math.floor(value)
 }
 
-function mixColor(first: number, second: number, amount: number): number {
-  const firstColor = Phaser.Display.Color.IntegerToColor(first)
-  const secondColor = Phaser.Display.Color.IntegerToColor(second)
-  return Phaser.Display.Color.GetColor(
-    Phaser.Math.Linear(firstColor.red, secondColor.red, amount),
-    Phaser.Math.Linear(firstColor.green, secondColor.green, amount),
-    Phaser.Math.Linear(firstColor.blue, secondColor.blue, amount),
-  )
+function colorChannel(color: number, shift: number): number {
+  return (color >> shift) & 0xff
 }
 
+function mixColor(first: number, second: number, amount: number): number {
+  const mixChannel = (shift: number) =>
+    Math.round(
+      Phaser.Math.Linear(
+        colorChannel(first, shift),
+        colorChannel(second, shift),
+        amount,
+      ),
+    )
+
+  return (mixChannel(16) << 16) | (mixChannel(8) << 8) | mixChannel(0)
+}
+
+function colorWithAlpha(color: number, alpha: number): string {
+  return `rgba(${colorChannel(color, 16)}, ${colorChannel(
+    color,
+    8,
+  )}, ${colorChannel(color, 0)}, ${Phaser.Math.Clamp(alpha, 0, 1)})`
+}
+
+let nextBurnTextureId = 0
+
 export class TileBurnAttachment {
-  private readonly graphics: Phaser.GameObjects.Graphics
+  private readonly texture: Phaser.Textures.CanvasTexture
+  private readonly image: Phaser.GameObjects.Image
+  private readonly context: CanvasRenderingContext2D
   private readonly heat: Float32Array
   private lastRedrawAt = -Infinity
   private dirty = false
@@ -45,17 +63,47 @@ export class TileBurnAttachment {
     private readonly tile: TileView,
     private readonly seed: number,
   ) {
-    const gridSize = MAGNIFYING_GLASS_CONFIG.burn.gridSize
+    const burn = MAGNIFYING_GLASS_CONFIG.burn
+    const gridSize = burn.gridSize
     this.heat = new Float32Array(gridSize * gridSize)
-    this.graphics = tile.scene.add.graphics()
-    this.graphics.setBlendMode(Phaser.BlendModes.MULTIPLY)
-    tile.add(this.graphics)
+    const textureKey = `obscurdle-burn-${nextBurnTextureId++}`
+    const texture = tile.scene.textures.createCanvas(
+      textureKey,
+      burn.textureSize,
+      burn.textureSize,
+    )
+    if (!texture) {
+      throw new Error(`Unable to create burn texture: ${textureKey}`)
+    }
+
+    this.texture = texture
+    this.context = texture.getContext()
+    this.image = tile.scene.add
+      .image(0, 0, textureKey)
+      .setDisplaySize(
+        GAME_LAYOUT.board.tileSize,
+        GAME_LAYOUT.board.tileSize,
+      )
+      .setBlendMode(Phaser.BlendModes.MULTIPLY)
+    tile.attachOverlay(this.image, {
+      // Phaser's masked reveal does not compose correctly when a preceding
+      // child uses MULTIPLY. NORMAL is visually equivalent over transparent
+      // pixels and keeps the live burn above both reveal letter layers.
+      onRevealStart: () => {
+        this.image.setBlendMode(Phaser.BlendModes.NORMAL)
+      },
+      onRevealComplete: () => {
+        this.image.setBlendMode(Phaser.BlendModes.MULTIPLY)
+      },
+    })
   }
 
   applyExposure(
     focalPoint: LensPoint,
     deltaSeconds: number,
     nowMs: number,
+    heatGainPerSecond: number =
+      MAGNIFYING_GLASS_CONFIG.burn.heatGainPerSecond,
   ): void {
     const burn = MAGNIFYING_GLASS_CONFIG.burn
     const focal = MAGNIFYING_GLASS_CONFIG.focalSpot
@@ -85,7 +133,7 @@ export class TileBurnAttachment {
         const next = accumulatedHeat(previous, distance, deltaSeconds, {
           radius: focal.radius,
           intensity: focal.intensity,
-          gainPerSecond: burn.heatGainPerSecond,
+          gainPerSecond: heatGainPerSecond,
           maximumHeat: burn.maximumHeat,
         })
         if (next > previous + 0.0001) {
@@ -103,7 +151,9 @@ export class TileBurnAttachment {
   }
 
   destroy(): void {
-    this.graphics.destroy()
+    this.tile.detachOverlay(this.image)
+    this.image.destroy()
+    this.texture.destroy()
   }
 
   private redraw(): void {
@@ -111,7 +161,9 @@ export class TileBurnAttachment {
     const tileSize = GAME_LAYOUT.board.tileSize
     const halfTile = tileSize / 2
     const cellSize = tileSize / burn.gridSize
-    this.graphics.clear()
+    const rasterScale = burn.textureSize / tileSize
+    const mark = burn.mark
+    this.context.clearRect(0, 0, burn.textureSize, burn.textureSize)
 
     for (let row = 0; row < burn.gridSize; row += 1) {
       for (let column = 0; column < burn.gridSize; column += 1) {
@@ -148,17 +200,63 @@ export class TileBurnAttachment {
         const centerX =
           -halfTile +
           (column + 0.5) * cellSize +
-          (cellRandom(this.seed, index, 2) - 0.5) * cellSize * 0.42
+          (cellRandom(this.seed, index, 2) - 0.5) *
+            cellSize *
+            mark.positionJitter
         const centerY =
           -halfTile +
           (row + 0.5) * cellSize +
-          (cellRandom(this.seed, index, 3) - 0.5) * cellSize * 0.42
+          (cellRandom(this.seed, index, 3) - 0.5) *
+            cellSize *
+            mark.positionJitter
         const radius =
           cellSize *
-          (0.58 + cellRandom(this.seed, index, 4) * 0.34)
-        this.graphics.fillStyle(color, alpha)
-        this.graphics.fillCircle(centerX, centerY, radius)
+          Phaser.Math.Linear(
+            mark.minimumRadiusInCells,
+            mark.maximumRadiusInCells,
+            cellRandom(this.seed, index, 4),
+          )
+        const rasterX = (centerX + halfTile) * rasterScale
+        const rasterY = (centerY + halfTile) * rasterScale
+        const rasterRadius = radius * rasterScale
+        const gradient = this.context.createRadialGradient(
+          rasterX,
+          rasterY,
+          0,
+          rasterX,
+          rasterY,
+          rasterRadius,
+        )
+
+        // A translucent center and denser outer band preserve the mottled,
+        // ringed marks of the former overlapping vector circles.
+        gradient.addColorStop(
+          0,
+          colorWithAlpha(color, alpha * mark.centerOpacityRatio),
+        )
+        gradient.addColorStop(
+          0.58,
+          colorWithAlpha(color, alpha * mark.middleOpacityRatio),
+        )
+        gradient.addColorStop(
+          mark.darkEdgeStart,
+          colorWithAlpha(color, alpha),
+        )
+        gradient.addColorStop(1, colorWithAlpha(color, 0))
+
+        this.context.fillStyle = gradient
+        this.context.beginPath()
+        this.context.arc(
+          rasterX,
+          rasterY,
+          rasterRadius,
+          0,
+          Math.PI * 2,
+        )
+        this.context.fill()
       }
     }
+
+    this.texture.refresh()
   }
 }

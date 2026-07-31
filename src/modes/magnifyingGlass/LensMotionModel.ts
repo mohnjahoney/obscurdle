@@ -60,6 +60,16 @@ export class LensMotionModel {
     )
   }
 
+  reposition(position: LensPoint): void {
+    this.positionValue = { ...position }
+    this.segmentStart = { ...position }
+    this.segmentTarget = { ...position }
+    this.segmentElapsedMs = 0
+    this.segmentDurationMs = 1
+    this.pauseRemainingMs = 0
+    this.chooseNextSegment()
+  }
+
   update(deltaMs: number): LensPoint {
     let remainingMs = Math.min(Math.max(deltaMs, 0), 100)
 

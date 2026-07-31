@@ -14,10 +14,20 @@ export const MENU_MODE_IDS = [
   "magnifying-glass",
   "flashlight",
   "candlelight",
+  "vintage-typewriter",
   "plain",
 ] as const satisfies readonly ModeId[]
 
 export const MODE_DEFINITIONS: Record<ModeId, ModeDefinition> = {
+  "vintage-typewriter": {
+    id: "vintage-typewriter",
+    menuLabel: "VINTAGE TYPEWRITER",
+    mastheadLabel: "VINTAGE TYPEWRITER",
+    footerLabel: "VINTAGE TYPEWRITER EDITION",
+    boardPresentation: "borderless",
+    keyboardPresentation: "vintage-typewriter",
+    create: () => new PlainMode(),
+  },
   misprint: {
     id: "misprint",
     menuLabel: "MISPRINT",

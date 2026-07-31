@@ -47,6 +47,7 @@ export const GAME_STYLE = {
     rule: 0.75,
     softRule: 0.42,
     overlay: 0.36,
+    navigationOverlay: 0.54,
   },
   tile: {
     borderWidth: 1.5,
@@ -63,6 +64,7 @@ export const GAME_STYLE = {
   },
   depth: {
     dialog: 200,
+    navigation: 10_000,
   },
 } as const
 

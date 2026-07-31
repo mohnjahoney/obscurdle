@@ -1,6 +1,12 @@
 import Phaser from "phaser"
 import type { ModeId } from "../modes/ObscuringMode"
 import { MENU_MODE_IDS, modeDefinition } from "../modes/registry"
+import {
+  markMenuHistory,
+  markPlayHistory,
+  playModeFromHistory,
+} from "../navigation/browserHistory"
+import { GlobalNavigation } from "../navigation/GlobalNavigation"
 import { Button } from "../presentation/Button"
 import { PaperBackdrop } from "../presentation/PaperBackdrop"
 import { preloadPigmentTextures } from "../presentation/pigmentTextures"
@@ -19,6 +25,7 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    markMenuHistory()
     configureLogicalCamera(this)
     new PaperBackdrop(this)
 
@@ -84,7 +91,7 @@ export class MenuScene extends Phaser.Scene {
           index * GAME_LAYOUT.menu.modeButtonGap,
         modeDefinition(modeId).menuLabel,
         () => this.startGame(modeId),
-        { inverted: index === 0 },
+        { inverted: index === 0, compact: true },
       )
     })
 
@@ -102,14 +109,28 @@ export class MenuScene extends Phaser.Scene {
       )
       .setOrigin(0.5)
 
+    new GlobalNavigation(this)
+
     this.input.keyboard?.on("keydown-ENTER", () => this.startGame("misprint"))
+    window.addEventListener("popstate", this.handlePopState)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      window.removeEventListener("popstate", this.handlePopState)
+    })
     this.cameras.main.fadeIn(GAME_MOTION.scene.fadeDuration)
   }
 
   private startGame(modeId: ModeId): void {
+    markPlayHistory(modeId)
     this.cameras.main.fadeOut(GAME_MOTION.scene.fadeDuration)
     this.time.delayedCall(GAME_MOTION.scene.fadeDuration, () => {
       this.scene.start("play", { modeId })
     })
+  }
+
+  private readonly handlePopState = (event: PopStateEvent): void => {
+    const modeId = playModeFromHistory(event.state)
+    if (modeId) {
+      this.scene.start("play", { modeId })
+    }
   }
 }
