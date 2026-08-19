@@ -1,49 +1,61 @@
 import Phaser from "phaser"
-import type { LetterResult } from "../core/evaluateGuess"
-import { GAME_STYLE, type EvaluationVisualState } from "../style/gameStyle"
-import { GAME_MOTION } from "../style/motion"
-import { InkBloomReveal } from "./InkBloomReveal"
+import type { LetterResult } from "../../core/evaluateGuess"
+import type { EvaluationVisualState } from "../../style/gameStyle"
+import { GAME_STYLE } from "../../style/gameStyle"
+import { GAME_MOTION } from "../../style/motion"
+import { InkBloomReveal } from "../InkBloomReveal"
 import {
-  applyTileVisualState,
-  createTileVisual,
-  type TileVisual,
-} from "./tileVisual"
-import type { BoardPresentationId } from "./board/BoardPresentation"
+  applyLetterCellVisualState,
+  createLetterCellVisual,
+  type LetterCellVisual,
+} from "../letterCellVisual"
+import type { BoardPresentationId } from "./BoardPresentation"
 
-type TileOverlay = Phaser.GameObjects.GameObject & {
+type CellOverlay = Phaser.GameObjects.GameObject & {
   setVisible(visible: boolean): Phaser.GameObjects.GameObject
 }
 
-interface TileOverlayOptions {
+interface CellOverlayOptions {
   onRevealStart?(): void
   onRevealComplete?(): void
 }
 
-export class TileView extends Phaser.GameObjects.Container {
-  private visual: TileVisual
+export interface EditorialLetterBounds {
+  left: number
+  right: number
+  centerY: number
+}
+
+export class LetterCell extends Phaser.GameObjects.Container {
+  private visual: LetterCellVisual
   private activeReveal?: InkBloomReveal
-  private readonly overlays = new Map<
-    TileOverlay,
-    TileOverlayOptions
-  >()
+  private readonly overlays = new Map<CellOverlay, CellOverlayOptions>()
   private visualStateValue: EvaluationVisualState = "empty"
+  private baseX: number
+  private baseY: number
+  private offsetX = 0
+  private depthOffset = 0
+  private readonly presentationDepth: number
 
   constructor(
     scene: Phaser.Scene,
     x: number,
     y: number,
     private readonly pigmentFrame: number,
-    private readonly presentationId: BoardPresentationId = "standard",
+    private readonly presentation: BoardPresentationId,
   ) {
     super(scene, x, y)
     scene.add.existing(this)
+    this.baseX = x
+    this.baseY = y
+    this.presentationDepth = this.depth
 
-    this.visual = createTileVisual(
+    this.visual = createLetterCellVisual(
       scene,
+      presentation,
       "",
       "empty",
       pigmentFrame,
-      presentationId,
     )
     this.add(this.visual.objects)
   }
@@ -62,6 +74,23 @@ export class TileView extends Phaser.GameObjects.Container {
         ease: "Sine.Out",
       })
     }
+  }
+
+  setEvaluatedLetter(letter: string, result: LetterResult): void {
+    this.visual.letter.setText(letter)
+    this.applyState(result)
+  }
+
+  setPresentationTransform(offsetX: number, depthOffset: number): void {
+    this.offsetX = offsetX
+    this.depthOffset = depthOffset
+    this.applyResolvedTransform()
+  }
+
+  setBasePlacement(x: number, y: number): void {
+    this.baseX = x
+    this.baseY = y
+    this.applyResolvedTransform()
   }
 
   reveal(
@@ -89,15 +118,13 @@ export class TileView extends Phaser.GameObjects.Container {
       parent: this,
       letter: revealedLetter,
       result,
+      presentation: this.presentation,
       pigmentFrame: this.pigmentFrame,
-      presentationId: this.presentationId,
       delay,
       legibleProgress,
       onLegible,
       onComplete: (evaluatedVisual) => {
-        for (const object of this.visual.objects) {
-          object.destroy()
-        }
+        for (const object of this.visual.objects) object.destroy()
         this.visual = evaluatedVisual
         this.visualStateValue = result
         this.activeReveal = undefined
@@ -109,14 +136,14 @@ export class TileView extends Phaser.GameObjects.Container {
   }
 
   attachOverlay(
-    overlay: TileOverlay,
-    options: TileOverlayOptions = {},
+    overlay: CellOverlay,
+    options: CellOverlayOptions = {},
   ): void {
     this.overlays.set(overlay, options)
     this.add(overlay)
   }
 
-  detachOverlay(overlay: TileOverlay): void {
+  detachOverlay(overlay: CellOverlay): void {
     this.overlays.delete(overlay)
     this.remove(overlay)
   }
@@ -126,19 +153,37 @@ export class TileView extends Phaser.GameObjects.Container {
     this.activeReveal?.setLetterInkAlpha(alpha)
   }
 
-  private applyState(state: EvaluationVisualState): void {
-    this.visualStateValue = state
-    applyTileVisualState(this.visual, state)
-  }
-
   get visualState(): EvaluationVisualState {
     return this.visualStateValue
   }
 
-  private restoreOverlayOrder(): void {
-    for (const overlay of this.overlays.keys()) {
-      this.bringToTop(overlay)
+  editorialBounds(): EditorialLetterBounds {
+    const halfWidth = Math.max(this.visual.letter.width / 2, 5)
+    return {
+      left: this.baseX - halfWidth,
+      right: this.baseX + halfWidth,
+      centerY: this.baseY + 1,
     }
+  }
+
+  destroy(fromScene?: boolean): void {
+    this.activeReveal?.destroy()
+    this.activeReveal = undefined
+    super.destroy(fromScene)
+  }
+
+  private applyState(state: EvaluationVisualState): void {
+    this.visualStateValue = state
+    applyLetterCellVisualState(this.visual, this.presentation, state)
+  }
+
+  private applyResolvedTransform(): void {
+    this.setPosition(this.baseX + this.offsetX, this.baseY)
+    this.setDepth(this.presentationDepth + this.depthOffset)
+  }
+
+  private restoreOverlayOrder(): void {
+    for (const overlay of this.overlays.keys()) this.bringToTop(overlay)
   }
 
   private notifyOverlaysRevealStart(): void {

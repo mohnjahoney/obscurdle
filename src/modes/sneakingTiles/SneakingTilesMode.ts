@@ -1,20 +1,34 @@
 import type { ModeContext, ObscuringMode } from "../ObscuringMode"
+import type {
+  SneakingTileMotionPresentationState,
+  SneakingTilesModePresentationState,
+} from "../../presentation/model/ModePresentationState"
 import { GAME_LAYOUT } from "../../style/layout"
-import { GAME_MOTION } from "../../style/motion"
-import { SneakingTileActor } from "./SneakingTileActor"
 import { chooseSneakingColumn } from "./sneakingTileSelection"
+import {
+  createSneakingTileMotion,
+  sneakingMotionChangesBetween,
+} from "./sneakingTileMotion"
 import { SNEAKING_TILES_CONFIG } from "./sneakingTilesConfig"
 
-function randomBetween(minimum: number, maximum: number): number {
-  return minimum + Math.random() * (maximum - minimum)
-}
-
 export class SneakingTilesMode implements ObscuringMode {
-  private readonly actors: SneakingTileActor[] = []
+  private readonly motions: SneakingTileMotionPresentationState[] = []
   private previousChosenColumns = new Set<number>()
+  private lastUpdateAt = 0
 
-  start(_context: ModeContext): void {
+  constructor(private readonly random: () => number = Math.random) {}
+
+  start(context: ModeContext): void {
+    this.motions.length = 0
     this.previousChosenColumns.clear()
+    this.lastUpdateAt = context.scene.time.now
+  }
+
+  presentationState(): SneakingTilesModePresentationState {
+    return {
+      kind: "sneaking-tiles",
+      motions: [...this.motions],
+    }
   }
 
   onGuessSubmitted(context: ModeContext, row: number): void {
@@ -31,7 +45,7 @@ export class SneakingTilesMode implements ObscuringMode {
         chooseSneakingColumn(
           GAME_LAYOUT.board.columns,
           SNEAKING_TILES_CONFIG.selection,
-          Math.random,
+          this.random,
           this.previousChosenColumns,
         ),
       )
@@ -40,29 +54,28 @@ export class SneakingTilesMode implements ObscuringMode {
     this.previousChosenColumns = new Set(chosenColumns)
 
     for (const column of chosenColumns) {
-      const tile = context.board.tileAt(row, column)
-      if (!tile) continue
-
-      const actor = new SneakingTileActor(context.scene, tile)
-      this.actors.push(actor)
-      const revealFinishesAfter =
-        GAME_MOTION.tile.inkBloom.duration +
-        column * GAME_MOTION.tile.revealStagger
-      const hesitation = randomBetween(
-        SNEAKING_TILES_CONFIG.hesitationMs.minimum,
-        SNEAKING_TILES_CONFIG.hesitationMs.maximum,
+      this.motions.push(
+        createSneakingTileMotion(
+          row,
+          column,
+          context.scene.time.now,
+          this.random,
+        ),
       )
-      actor.start(revealFinishesAfter + hesitation)
     }
   }
 
-  update(_context: ModeContext): void {}
+  update(context: ModeContext): boolean {
+    const now = context.scene.time.now
+    const presentationChanged = this.motions.some((motion) =>
+      sneakingMotionChangesBetween(motion, this.lastUpdateAt, now),
+    )
+    this.lastUpdateAt = now
+    return presentationChanged
+  }
 
-  stop(_context: ModeContext): void {
-    for (const actor of this.actors) {
-      actor.stop()
-    }
-    this.actors.length = 0
+  stop(): void {
+    this.motions.length = 0
     this.previousChosenColumns.clear()
   }
 }

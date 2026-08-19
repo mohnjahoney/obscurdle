@@ -6,20 +6,23 @@ import {
   createInkBloomParameters,
   INK_BLOOM_FRAGMENT_SHADER,
 } from "./inkBloom"
-import { createTileVisual, type TileVisual } from "./tileVisual"
 import type { BoardPresentationId } from "./board/BoardPresentation"
+import {
+  createLetterCellVisual,
+  type LetterCellVisual,
+} from "./letterCellVisual"
 
 interface InkBloomRevealOptions {
   scene: Phaser.Scene
   parent: Phaser.GameObjects.Container
   letter: string
   result: LetterResult
+  presentation: BoardPresentationId
   pigmentFrame: number
-  presentationId: BoardPresentationId
   delay: number
   legibleProgress?: number
   onLegible?(): void
-  onComplete(visual: TileVisual): void
+  onComplete(visual: LetterCellVisual): void
 }
 
 let nextMaskId = 0
@@ -27,11 +30,11 @@ let nextMaskId = 0
 export class InkBloomReveal {
   private readonly scene: Phaser.Scene
   private readonly parent: Phaser.GameObjects.Container
-  private readonly evaluatedVisual: TileVisual
+  private readonly evaluatedVisual: LetterCellVisual
   private readonly evaluatedLayer: Phaser.GameObjects.Container
   private readonly maskShader: Phaser.GameObjects.Shader
   private readonly progress = { value: 0 }
-  private readonly onComplete: (visual: TileVisual) => void
+  private readonly onComplete: (visual: LetterCellVisual) => void
   private readonly onLegible?: () => void
   private readonly legibleProgress: number
   private tween?: Phaser.Tweens.Tween
@@ -49,12 +52,12 @@ export class InkBloomReveal {
     const size = GAME_LAYOUT.board.tileSize
     const parameters = createInkBloomParameters()
     const maskTextureKey = `obscurdle-ink-mask-${nextMaskId++}`
-    this.evaluatedVisual = createTileVisual(
+    this.evaluatedVisual = createLetterCellVisual(
       options.scene,
+      options.presentation,
       options.letter,
       options.result,
       options.pigmentFrame,
-      options.presentationId,
     )
 
     this.evaluatedLayer = options.scene.add

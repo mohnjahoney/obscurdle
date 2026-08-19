@@ -29,16 +29,25 @@ export const GAME_LAYOUT = {
     gap: 4,
     rowGap: 7,
   },
+  keyboardPresentationToggle: {
+    y: 694,
+    hitHeight: 24,
+  },
+  boardPresentationToggle: {
+    y: 718,
+    hitHeight: 24,
+  },
   footer: {
-    y: 744,
+    y: 748,
   },
   menu: {
     kickerY: 142,
     titleY: 222,
     deckY: 282,
     descriptionY: 330,
-    modeButtonStartY: 390,
-    modeButtonGap: 41,
+    modeIndexY: 365,
+    modeTileStartY: 424,
+    modeTileRowGap: 96,
     noteY: 724,
   },
   dialog: {

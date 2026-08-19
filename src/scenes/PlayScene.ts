@@ -8,10 +8,31 @@ import {
   menuStateFromHistory,
 } from "../navigation/browserHistory"
 import { GlobalNavigation } from "../navigation/GlobalNavigation"
-import { BoardView } from "../presentation/BoardView"
+import { BoardRenderer } from "../presentation/board/BoardRenderer"
+import type { BoardPresentationId } from "../presentation/board/BoardPresentation"
+import { BoardPresentationToggle } from "../presentation/board/BoardPresentationToggle"
+import { resolveLetterBasePlacement } from "../presentation/board/boardLayout"
+import { editorialWord } from "../presentation/board/editorialEvaluation"
+import {
+  loadBoardPresentation,
+  saveBoardPresentation,
+} from "../presentation/board/boardPreference"
 import { Button } from "../presentation/Button"
+import { SceneEffectRenderer } from "../presentation/effects/SceneEffectRenderer"
 import { KeyboardView } from "../presentation/KeyboardView"
 import { PaperBackdrop } from "../presentation/PaperBackdrop"
+import { KeyboardPresentationToggle } from "../presentation/keyboard/KeyboardPresentationToggle"
+import type { KeyboardPresentationId } from "../presentation/keyboard/KeyboardPresentation"
+import {
+  loadKeyboardPresentation,
+  saveKeyboardPresentation,
+} from "../presentation/keyboard/keyboardPreference"
+import { buildPresentation } from "../presentation/model/buildPresentation"
+import type { PresentationConfiguration } from "../presentation/model/PresentationConfiguration"
+import type {
+  MastheadPresentationModel,
+  PresentationModel,
+} from "../presentation/model/PresentationModel"
 import { preloadPigmentTextures } from "../presentation/pigmentTextures"
 import { GAME_STYLE } from "../style/gameStyle"
 import { GAME_LAYOUT } from "../style/layout"
@@ -32,8 +53,14 @@ interface PlaySceneData {
 
 export class PlayScene extends Phaser.Scene {
   private puzzle!: Puzzle
-  private board!: BoardView
+  private board!: BoardRenderer
+  private sceneEffects!: SceneEffectRenderer
   private keyboardView!: KeyboardView
+  private keyboardPresentation: KeyboardPresentationId = "digital"
+  private boardPresentation: BoardPresentationId = "tiles"
+  private presentationConfiguration!: PresentationConfiguration
+  private keyboardToggle!: KeyboardPresentationToggle
+  private boardToggle!: BoardPresentationToggle
   private messageText!: Phaser.GameObjects.Text
   private messageTimer?: Phaser.Time.TimerEvent
   private acceptingInput = true
@@ -59,29 +86,67 @@ export class PlayScene extends Phaser.Scene {
   create(): void {
     markPlayHistory(this.modeId)
     configureLogicalCamera(this)
-    new PaperBackdrop(this)
     this.puzzle = new Puzzle(wordSource.chooseAnswer(), wordSource.allowedWords())
-
-    const mastheadTitle = this.createMasthead()
-    this.board = new BoardView(
-      this,
-      modeDefinition(this.modeId).boardPresentation,
-    )
+    this.keyboardPresentation = loadKeyboardPresentation()
+    this.boardPresentation = loadBoardPresentation()
+    this.presentationConfiguration = {
+      board: this.boardPresentation,
+      keyboard: this.keyboardPresentation,
+    }
     this.mode = modeDefinition(this.modeId).create()
-    this.modeContext = { scene: this, board: this.board }
+    this.modeContext = {
+      scene: this,
+      boardPresentation: () => this.presentationConfiguration.board,
+      letterBasePlacementAt: (row, column) => {
+        const puzzle = this.puzzle.snapshot()
+        const submittedGuess = puzzle.guesses[row]
+        const word = submittedGuess
+          ? this.presentationConfiguration.board === "bare"
+            ? editorialWord(submittedGuess.word, submittedGuess.evaluation)
+            : submittedGuess.word
+          : row === puzzle.guesses.length
+            ? this.presentationConfiguration.board === "bare"
+              ? editorialWord(puzzle.currentGuess)
+              : puzzle.currentGuess
+            : ""
+        return resolveLetterBasePlacement(
+          this.presentationConfiguration.board,
+          row,
+          column,
+          word,
+        )
+      },
+    }
     this.mode.start(this.modeContext)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.mode.stop(this.modeContext)
     })
+    const initialPresentation = this.currentPresentation()
 
-    this.keyboardView = new KeyboardView(
+    if (initialPresentation.page.kind === "paper") {
+      new PaperBackdrop(this)
+    }
+
+    const mastheadTitle = this.createMasthead(initialPresentation.masthead)
+    this.board = this.createBoard(initialPresentation.board.kind)
+    this.board.apply(initialPresentation.board)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.board.destroy()
+    })
+
+    this.keyboardView = this.createKeyboard(
+      initialPresentation.keyboard.kind,
+    )
+    this.keyboardView.apply(initialPresentation.keyboard)
+    this.keyboardToggle = new KeyboardPresentationToggle(
       this,
-      {
-        onLetter: (letter) => this.typeLetter(letter),
-        onEnter: () => this.submit(),
-        onBackspace: () => this.backspace(),
-      },
-      modeDefinition(this.modeId).keyboardPresentation,
+      this.keyboardPresentation,
+      (presentationId) => this.setKeyboardPresentation(presentationId),
+    )
+    this.boardToggle = new BoardPresentationToggle(
+      this,
+      this.boardPresentation,
+      (presentationId) => this.setBoardPresentation(presentationId),
     )
 
     this.messageText = this.add
@@ -98,7 +163,7 @@ export class PlayScene extends Phaser.Scene {
       .text(
         GAME_LAYOUT.width / 2,
         GAME_LAYOUT.footer.y,
-        `${modeDefinition(this.modeId).footerLabel}  ·  SIX GUESSES  ·  FIVE LETTERS`,
+        initialPresentation.footer.text,
         {
           fontFamily: GAME_STYLE.type.bodyFamily,
           fontSize: `${GAME_STYLE.type.footerSize}px`,
@@ -125,6 +190,12 @@ export class PlayScene extends Phaser.Scene {
         this.navigation.requestChooseEdition()
       })
 
+    this.sceneEffects = this.createSceneEffects()
+    this.sceneEffects.apply(initialPresentation.effect)
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.sceneEffects.destroy()
+    })
+
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
       if (event.key === "Enter") {
         this.submit()
@@ -143,25 +214,33 @@ export class PlayScene extends Phaser.Scene {
   }
 
   update(_time: number, deltaMs: number): void {
-    this.mode?.update(this.modeContext, deltaMs)
+    const presentationChanged = this.mode.update(this.modeContext, deltaMs)
+    if (presentationChanged) this.applyCurrentPresentation()
   }
 
-  private createMasthead(): Phaser.GameObjects.Text {
+  private createMasthead(
+    presentation: MastheadPresentationModel,
+  ): Phaser.GameObjects.Text {
     const title = this.add
-      .text(GAME_LAYOUT.page.inset, GAME_LAYOUT.masthead.titleY, "OBSCURDLE", {
-        fontFamily: GAME_STYLE.type.displayFamily,
-        fontSize: `${GAME_STYLE.type.tileSize}px`,
-        fontStyle: "bold",
-        color: GAME_STYLE.textColor.ink,
-        resolution: RENDER_SCALE,
-      })
+      .text(
+        GAME_LAYOUT.page.inset,
+        GAME_LAYOUT.masthead.titleY,
+        presentation.title,
+        {
+          fontFamily: GAME_STYLE.type.displayFamily,
+          fontSize: `${GAME_STYLE.type.tileSize}px`,
+          fontStyle: "bold",
+          color: GAME_STYLE.textColor.ink,
+          resolution: RENDER_SCALE,
+        },
+      )
       .setOrigin(0, 0.5)
 
     this.add
       .text(
         GAME_LAYOUT.width / 2,
         GAME_LAYOUT.masthead.deckY,
-        "Keep the puzzle. Change what can be seen.",
+        presentation.deck,
         {
           fontFamily: GAME_STYLE.type.displayFamily,
           fontSize: `${GAME_STYLE.type.deckSize}px`,
@@ -183,7 +262,80 @@ export class PlayScene extends Phaser.Scene {
     ) {
       return
     }
-    this.renderCurrentRow()
+    this.applyCurrentPresentation()
+  }
+
+  private createKeyboard(
+    presentationId: KeyboardPresentationId,
+  ): KeyboardView {
+    return new KeyboardView(
+      this,
+      {
+        onLetter: (letter) => this.typeLetter(letter),
+        onEnter: () => this.submit(),
+        onBackspace: () => this.backspace(),
+      },
+      presentationId,
+    )
+  }
+
+  private createBoard(presentationId: BoardPresentationId): BoardRenderer {
+    return new BoardRenderer(this, presentationId, {
+      onLetterLegible: (row, column) => {
+        if (this.mode.onLetterLegible?.(row, column)) {
+          this.applyCurrentPresentation()
+        }
+      },
+    })
+  }
+
+  private createSceneEffects(): SceneEffectRenderer {
+    return new SceneEffectRenderer(this, this.board, {
+      onControlChange: (name, value) => {
+        if (this.mode.onSceneEffectControlChange?.(name, value)) {
+          this.applyCurrentPresentation()
+        }
+      },
+    })
+  }
+
+  private setKeyboardPresentation(
+    presentationId: KeyboardPresentationId,
+  ): void {
+    if (presentationId === this.keyboardPresentation) return
+
+    this.keyboardPresentation = presentationId
+    this.presentationConfiguration = {
+      ...this.presentationConfiguration,
+      keyboard: presentationId,
+    }
+    saveKeyboardPresentation(presentationId)
+    this.keyboardView.destroy()
+    this.keyboardView = this.createKeyboard(presentationId)
+    this.keyboardView.apply(this.currentPresentation().keyboard)
+    this.keyboardToggle.setSelection(presentationId)
+  }
+
+  private setBoardPresentation(
+    presentationId: BoardPresentationId,
+  ): void {
+    if (presentationId === this.boardPresentation) return
+
+    this.boardPresentation = presentationId
+    this.presentationConfiguration = {
+      ...this.presentationConfiguration,
+      board: presentationId,
+    }
+    saveBoardPresentation(presentationId)
+
+    const presentation = this.currentPresentation()
+    this.sceneEffects.destroy()
+    this.board.destroy()
+    this.board = this.createBoard(presentation.board.kind)
+    this.board.apply(presentation.board)
+    this.sceneEffects = this.createSceneEffects()
+    this.sceneEffects.apply(presentation.effect)
+    this.boardToggle.setSelection(presentationId)
   }
 
   private backspace(): void {
@@ -194,7 +346,7 @@ export class PlayScene extends Phaser.Scene {
     ) {
       return
     }
-    this.renderCurrentRow()
+    this.applyCurrentPresentation()
   }
 
   private submit(): void {
@@ -211,40 +363,10 @@ export class PlayScene extends Phaser.Scene {
       return
     }
 
-    this.mode.onGuessSubmitted(this.modeContext, result.row)
-    const revealKeyboardByLetter =
-      this.mode.keyboardRevealTiming === "letter-legible"
-    this.board.revealRow(result.row, result.guess.evaluation, {
-      word: result.guess.word,
-      letterLegibleProgress: this.mode.letterLegibleProgress,
-      onLetterLegible: revealKeyboardByLetter
-        ? (column) => {
-            const letter = result.guess.word[column]
-            const evaluation = result.guess.evaluation[column]
-            if (letter && evaluation) {
-              this.keyboardView.applyLetterEvaluation(letter, evaluation)
-            }
-          }
-        : undefined,
-    })
-    if (!revealKeyboardByLetter) {
-      this.keyboardView.applyEvaluation(result.guess.word, result.guess.evaluation)
-    }
+    this.mode.onGuessSubmitted?.(this.modeContext, result.row)
+    this.applyCurrentPresentation()
     this.acceptingInput = result.status === "playing"
-
-    const revealDuration =
-      GAME_MOTION.tile.inkBloom.duration +
-      GAME_MOTION.tile.revealStagger * (result.guess.word.length - 1)
-
-    this.time.delayedCall(revealDuration, () => {
-      if (result.status !== "playing") {
-        this.showResult(result.status)
-      }
-    })
-  }
-
-  private renderCurrentRow(): void {
-    this.board.renderCurrentGuess(this.puzzle.guesses.length, this.puzzle.currentGuess)
+    this.scheduleResult(result.status, result.guess.word.length)
   }
 
   private eraseRejectedGuess(): void {
@@ -256,11 +378,7 @@ export class PlayScene extends Phaser.Scene {
         GAME_MOTION.tile.invalidEraseStepMs * (index + 1),
         () => {
           this.puzzle.backspace()
-          this.board.renderCurrentGuess(
-            this.puzzle.guesses.length,
-            this.puzzle.currentGuess,
-            false,
-          )
+          this.applyCurrentPresentation()
 
           if (index === letterCount - 1) {
             this.acceptingInput = true
@@ -268,6 +386,32 @@ export class PlayScene extends Phaser.Scene {
         },
       )
     }
+  }
+
+  private currentPresentation(): PresentationModel {
+    return buildPresentation(
+      this.puzzle.snapshot(),
+      this.presentationConfiguration,
+      this.mode.presentationState(),
+      this.time.now,
+    )
+  }
+
+  private applyCurrentPresentation(): void {
+    const presentation = this.currentPresentation()
+    this.sceneEffects.apply(presentation.effect)
+    this.board.apply(presentation.board)
+    this.keyboardView.apply(presentation.keyboard)
+  }
+
+  private scheduleResult(status: PuzzleStatus, wordLength: number): void {
+    const revealDuration =
+      GAME_MOTION.tile.inkBloom.duration +
+      GAME_MOTION.tile.revealStagger * (wordLength - 1)
+
+    this.time.delayedCall(revealDuration, () => {
+      if (status !== "playing") this.showResult(status)
+    })
   }
 
   private showMessage(message: string): void {
@@ -286,6 +430,7 @@ export class PlayScene extends Phaser.Scene {
   private showResult(status: PuzzleStatus): void {
     this.time.delayedCall(GAME_MOTION.dialog.delayAfterReveal, () => {
       this.mode.stop(this.modeContext)
+      this.applyCurrentPresentation()
 
       const overlay = this.add.rectangle(
         GAME_LAYOUT.width / 2,

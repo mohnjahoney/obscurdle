@@ -33,14 +33,14 @@ export class FlashlightDebugControls {
     input.step = String(options.step)
     input.value = String(options.initialValue)
 
-    const updateValue = () => {
+    const updateValue = (notify: boolean) => {
       const nextValue = Number(input.value)
       value.value = `${(nextValue * 100).toFixed(1)}%`
-      options.onChange(nextValue)
+      if (notify) options.onChange(nextValue)
     }
 
-    input.addEventListener("input", updateValue)
-    updateValue()
+    input.addEventListener("input", () => updateValue(true))
+    updateValue(false)
 
     this.root.append(label, value, input)
     game.append(this.root)

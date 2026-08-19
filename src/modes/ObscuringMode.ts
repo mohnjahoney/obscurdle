@@ -1,8 +1,8 @@
 import type Phaser from "phaser"
 import type { GuessTransformContext } from "../core/Puzzle"
-import type { BoardView } from "../presentation/BoardView"
+import type { ModePresentationState } from "../presentation/model/ModePresentationState"
+import type { LetterBasePlacement } from "../presentation/board/boardLayout"
 import type { BoardPresentationId } from "../presentation/board/BoardPresentation"
-import type { KeyboardPresentationId } from "../presentation/keyboard/KeyboardPresentation"
 
 export const MODE_IDS = [
   "plain",
@@ -12,25 +12,24 @@ export const MODE_IDS = [
   "sneaking-tiles",
   "magnifying-glass",
   "misprint",
-  "vintage-typewriter",
 ] as const
 
 export type ModeId = (typeof MODE_IDS)[number]
 
-export type KeyboardRevealTiming = "immediate" | "letter-legible"
-
 export interface ModeContext {
   scene: Phaser.Scene
-  board: BoardView
+  boardPresentation(): BoardPresentationId
+  letterBasePlacementAt(row: number, column: number): LetterBasePlacement
 }
 
 export interface ObscuringMode {
-  readonly keyboardRevealTiming?: KeyboardRevealTiming
-  readonly letterLegibleProgress?: number
+  presentationState(): ModePresentationState
   start(context: ModeContext): void
   transformSubmittedWord?(context: GuessTransformContext): string
-  onGuessSubmitted(context: ModeContext, row: number): void
-  update(context: ModeContext, deltaMs: number): void
+  onGuessSubmitted?(context: ModeContext, row: number): void
+  onLetterLegible?(row: number, column: number): boolean | void
+  onSceneEffectControlChange?(name: string, value: number): boolean | void
+  update(context: ModeContext, deltaMs: number): boolean
   stop(context: ModeContext): void
 }
 
@@ -38,8 +37,5 @@ export interface ModeDefinition {
   id: ModeId
   menuLabel: string
   mastheadLabel: string
-  footerLabel: string
-  boardPresentation?: BoardPresentationId
-  keyboardPresentation?: KeyboardPresentationId
   create(): ObscuringMode
 }

@@ -1,9 +1,12 @@
 export const FADING_INK_CONFIG = {
   gracePeriodMs: 6_000,
   letterStartJitterMaxMs: 0,
-  fadeDurationMs: 10_000,
+  // The fade timer is independent of the ink-bloom reveal animation. A
+  // submitted row begins fading after the grace period even if its reveal is
+  // still running, and then takes roughly 30 seconds to disappear.
+  fadeDurationMs: 30_000,
   debugFadeStartMarker: {
-    enabled: true,
+    enabled: false,
     offsetFromBoard: 18,
     width: 16,
     height: 9,

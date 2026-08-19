@@ -2,7 +2,7 @@ import type Phaser from "phaser"
 import type { LetterResult } from "../../core/evaluateGuess"
 
 export const KEYBOARD_PRESENTATION_IDS = [
-  "standard",
+  "digital",
   "vintage-typewriter",
 ] as const
 

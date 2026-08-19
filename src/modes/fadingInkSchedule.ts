@@ -2,7 +2,7 @@ import { FADING_INK_CONFIG } from "./fadingInkConfig"
 
 export interface RowFadeSchedule {
   submittedAt: number
-  letterStartDelaysMs: number[]
+  letterStartDelaysMs: readonly number[]
 }
 
 type RandomSource = () => number

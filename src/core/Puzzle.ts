@@ -38,7 +38,8 @@ export type SubmitResult =
       reason: SubmitFailureReason
     }
 
-export interface PuzzleSnapshot {
+export interface PuzzleState {
+  answer: string
   currentGuess: string
   guesses: readonly SubmittedGuess[]
   status: PuzzleStatus
@@ -140,8 +141,9 @@ export class Puzzle {
     }
   }
 
-  snapshot(): PuzzleSnapshot {
+  snapshot(): PuzzleState {
     return {
+      answer: this.answer,
       currentGuess: this.current,
       guesses: this.submitted,
       status: this.puzzleStatus,

@@ -25,7 +25,7 @@ export const FLASHLIGHT_CONFIG = {
   aimSmoothingMs: 85,
   touchOffsetY: 72,
   debugConeInformationControl: {
-    enabled: true,
+    enabled: false,
     minimum: 0,
     maximum: 0.15,
     step: 0.001,

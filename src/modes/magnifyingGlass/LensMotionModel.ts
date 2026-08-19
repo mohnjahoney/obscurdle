@@ -6,6 +6,12 @@ export interface LensPoint {
   y: number
 }
 
+export type LensMotionPhase =
+  | "parked"
+  | "waiting"
+  | "entering"
+  | "roaming"
+
 function smootherStep(value: number): number {
   const clamped = Math.min(Math.max(value, 0), 1)
   return (
@@ -29,6 +35,8 @@ export class LensMotionModel {
   private segmentDurationMs = 1
   private pauseRemainingMs = 0
   private submittedRows = 0
+  private phaseValue: LensMotionPhase = "parked"
+  private entranceDelayRemainingMs = 0
 
   constructor(seed = Math.random() * 1_000_000) {
     let state = Math.floor(seed) || 1
@@ -43,21 +51,28 @@ export class LensMotionModel {
       return ((value ^ (value >>> 14)) >>> 0) / 4_294_967_296
     }
 
-    const bounds = MAGNIFYING_GLASS_CONFIG.motion.bounds
-    this.positionValue = {
-      x: (bounds.left + bounds.right) / 2,
-      y: GAME_LAYOUT.board.top + GAME_LAYOUT.board.tileSize / 2,
-    }
+    const entrance = MAGNIFYING_GLASS_CONFIG.motion.entrance
+    this.positionValue = { ...entrance.start }
     this.segmentStart = { ...this.positionValue }
     this.segmentTarget = { ...this.positionValue }
-    this.chooseNextSegment()
   }
 
   setSubmittedRows(rowCount: number): void {
+    const previousRows = this.submittedRows
     this.submittedRows = Math.min(
       Math.max(rowCount, 0),
       GAME_LAYOUT.board.rows,
     )
+    if (
+      previousRows === 0 &&
+      this.submittedRows > 0 &&
+      this.phaseValue === "parked"
+    ) {
+      this.phaseValue = "waiting"
+      this.entranceDelayRemainingMs =
+        MAGNIFYING_GLASS_CONFIG.motion.entrance
+          .delayAfterFirstSubmissionMs
+    }
   }
 
   reposition(position: LensPoint): void {
@@ -67,6 +82,8 @@ export class LensMotionModel {
     this.segmentElapsedMs = 0
     this.segmentDurationMs = 1
     this.pauseRemainingMs = 0
+    this.entranceDelayRemainingMs = 0
+    this.phaseValue = "roaming"
     this.chooseNextSegment()
   }
 
@@ -74,6 +91,36 @@ export class LensMotionModel {
     let remainingMs = Math.min(Math.max(deltaMs, 0), 100)
 
     while (remainingMs > 0) {
+      if (this.phaseValue === "parked") break
+
+      if (this.phaseValue === "waiting") {
+        const consumed = Math.min(
+          remainingMs,
+          this.entranceDelayRemainingMs,
+        )
+        this.entranceDelayRemainingMs -= consumed
+        remainingMs -= consumed
+        if (this.entranceDelayRemainingMs > 0) break
+        this.beginEntrance()
+        continue
+      }
+
+      if (this.phaseValue === "entering") {
+        const segmentRemaining =
+          this.segmentDurationMs - this.segmentElapsedMs
+        const consumed = Math.min(remainingMs, segmentRemaining)
+        this.segmentElapsedMs += consumed
+        remainingMs -= consumed
+        this.updateSegmentPosition()
+
+        if (this.segmentElapsedMs >= this.segmentDurationMs) {
+          this.positionValue = { ...this.segmentTarget }
+          this.phaseValue = "roaming"
+          this.chooseNextSegment()
+        }
+        continue
+      }
+
       if (this.pauseRemainingMs > 0) {
         const consumed = Math.min(remainingMs, this.pauseRemainingMs)
         this.pauseRemainingMs -= consumed
@@ -87,17 +134,7 @@ export class LensMotionModel {
       this.segmentElapsedMs += consumed
       remainingMs -= consumed
 
-      const amount = smootherStep(
-        this.segmentElapsedMs / this.segmentDurationMs,
-      )
-      this.positionValue = {
-        x:
-          this.segmentStart.x +
-          (this.segmentTarget.x - this.segmentStart.x) * amount,
-        y:
-          this.segmentStart.y +
-          (this.segmentTarget.y - this.segmentStart.y) * amount,
-      }
+      this.updateSegmentPosition()
 
       if (this.segmentElapsedMs >= this.segmentDurationMs) {
         this.positionValue = { ...this.segmentTarget }
@@ -114,6 +151,34 @@ export class LensMotionModel {
 
   get position(): LensPoint {
     return { ...this.positionValue }
+  }
+
+  get phase(): LensMotionPhase {
+    return this.phaseValue
+  }
+
+  private beginEntrance(): void {
+    const entrance = MAGNIFYING_GLASS_CONFIG.motion.entrance
+    this.phaseValue = "entering"
+    this.segmentStart = { ...this.positionValue }
+    this.segmentTarget = { ...entrance.target }
+    this.segmentElapsedMs = 0
+    this.segmentDurationMs = entrance.durationMs
+    this.pauseRemainingMs = 0
+  }
+
+  private updateSegmentPosition(): void {
+    const amount = smootherStep(
+      this.segmentElapsedMs / this.segmentDurationMs,
+    )
+    this.positionValue = {
+      x:
+        this.segmentStart.x +
+        (this.segmentTarget.x - this.segmentStart.x) * amount,
+      y:
+        this.segmentStart.y +
+        (this.segmentTarget.y - this.segmentStart.y) * amount,
+    }
   }
 
   private chooseNextSegment(): void {

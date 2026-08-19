@@ -1,5 +1,5 @@
 import Phaser from "phaser"
-import type { TileView } from "../../presentation/TileView"
+import type { LetterCell } from "../../presentation/board/LetterCell"
 import type { LensPoint } from "./LensMotionModel"
 import { MAGNIFYING_GLASS_CONFIG } from "./magnifyingGlassConfig"
 
@@ -31,7 +31,7 @@ export class LensView {
 
   constructor(
     scene: Phaser.Scene,
-    private readonly sourceTiles: readonly TileView[],
+    private readonly sourceTiles: readonly LetterCell[],
     initialPosition: LensPoint,
   ) {
     const lens = MAGNIFYING_GLASS_CONFIG.lens

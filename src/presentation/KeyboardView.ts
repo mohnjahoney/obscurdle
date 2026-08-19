@@ -10,6 +10,7 @@ import type {
 } from "./keyboard/KeyboardPresentation"
 import { StandardKeyCap } from "./keyboard/StandardKeyCap"
 import { VintageTypewriterKeyCap } from "./keyboard/VintageTypewriterKeyCap"
+import type { KeyboardPresentationModel } from "./model/PresentationModel"
 
 interface KeyboardHandlers {
   onLetter(letter: string): void
@@ -48,7 +49,7 @@ class KeyView extends Phaser.GameObjects.Container {
         : new StandardKeyCap(scene, width)
 
     this.labelText = scene.add
-      .text(0, 1, label, {
+      .text(0, -1, label, {
         fontFamily: GAME_STYLE.type.bodyFamily,
         fontSize: `${
           width === GAME_LAYOUT.keyboard.wideKeyWidth
@@ -79,11 +80,12 @@ class KeyView extends Phaser.GameObjects.Container {
 
 export class KeyboardView {
   private readonly letterKeys = new Map<string, KeyView>()
+  private readonly keys: KeyView[] = []
 
   constructor(
     scene: Phaser.Scene,
     handlers: KeyboardHandlers,
-    presentationId: KeyboardPresentationId = "standard",
+    presentationId: KeyboardPresentationId = "digital",
   ) {
     KEY_ROWS.forEach((letters, rowIndex) => {
       const isFinalRow = rowIndex === KEY_ROWS.length - 1
@@ -103,7 +105,7 @@ export class KeyboardView {
 
       if (isFinalRow) {
         const width = GAME_LAYOUT.keyboard.wideKeyWidth
-        new KeyView(
+        this.keys.push(new KeyView(
           scene,
           cursorX + width / 2,
           y,
@@ -111,7 +113,7 @@ export class KeyboardView {
           "ENTER",
           handlers.onEnter,
           presentationId,
-        )
+        ))
         cursorX += width + GAME_LAYOUT.keyboard.gap
       }
 
@@ -127,12 +129,13 @@ export class KeyboardView {
           presentationId,
         )
         this.letterKeys.set(letter, key)
+        this.keys.push(key)
         cursorX += width + GAME_LAYOUT.keyboard.gap
       }
 
       if (isFinalRow) {
         const width = GAME_LAYOUT.keyboard.wideKeyWidth
-        new KeyView(
+        this.keys.push(new KeyView(
           scene,
           cursorX + width / 2,
           y,
@@ -140,22 +143,26 @@ export class KeyboardView {
           "DELETE",
           handlers.onBackspace,
           presentationId,
-        )
+        ))
       }
     })
   }
 
-  applyEvaluation(word: string, evaluation: LetterResult[]): void {
-    for (let index = 0; index < word.length; index += 1) {
-      const letter = word[index]
-      const result = evaluation[index]
-      if (letter && result) {
-        this.applyLetterEvaluation(letter, result)
-      }
+  apply(presentation: KeyboardPresentationModel): void {
+    for (const [letter, result] of Object.entries(presentation.evaluations)) {
+      if (result) this.applyLetterEvaluation(letter, result)
     }
   }
 
-  applyLetterEvaluation(letter: string, result: LetterResult): void {
+  private applyLetterEvaluation(letter: string, result: LetterResult): void {
     this.letterKeys.get(letter)?.applyState(result)
+  }
+
+  destroy(): void {
+    for (const key of this.keys) {
+      key.destroy(true)
+    }
+    this.keys.length = 0
+    this.letterKeys.clear()
   }
 }

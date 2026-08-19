@@ -16,6 +16,10 @@ export const GAME_MOTION = {
   key: {
     pressDuration: 70,
   },
+  editorial: {
+    strikeDuration: 260,
+    highlightDuration: 330,
+  },
   scene: {
     fadeDuration: 180,
   },

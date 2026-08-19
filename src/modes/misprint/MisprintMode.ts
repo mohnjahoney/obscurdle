@@ -1,15 +1,27 @@
 import type { GuessTransformContext } from "../../core/Puzzle"
-import type { ModeContext, ObscuringMode } from "../ObscuringMode"
+import type { MisprintModePresentationState } from "../../presentation/model/ModePresentationState"
+import type { ObscuringMode } from "../ObscuringMode"
 import { MISPRINT_CONFIG } from "./misprintConfig"
 import { selectMisprintWord } from "./selectMisprintWord"
 
 export class MisprintMode implements ObscuringMode {
-  readonly keyboardRevealTiming = "letter-legible" as const
-  readonly letterLegibleProgress = MISPRINT_CONFIG.letterLegibleProgress
+  private readonly legibleCells = new Set<string>()
 
   constructor(private readonly random: () => number = Math.random) {}
 
-  start(): void {}
+  start(): void {
+    this.legibleCells.clear()
+  }
+
+  presentationState(): MisprintModePresentationState {
+    return {
+      kind: "misprint",
+      legibleCells: Array.from(this.legibleCells, (key) => {
+        const [row, column] = key.split(":").map(Number)
+        return { row: row!, column: column! }
+      }),
+    }
+  }
 
   transformSubmittedWord(context: GuessTransformContext): string {
     return selectMisprintWord({
@@ -20,9 +32,18 @@ export class MisprintMode implements ObscuringMode {
     })
   }
 
-  onGuessSubmitted(_context: ModeContext, _row: number): void {}
+  onLetterLegible(row: number, column: number): boolean {
+    const key = `${row}:${column}`
+    if (this.legibleCells.has(key)) return false
+    this.legibleCells.add(key)
+    return true
+  }
 
-  update(): void {}
+  update(): boolean {
+    return false
+  }
 
-  stop(): void {}
+  stop(): void {
+    this.legibleCells.clear()
+  }
 }

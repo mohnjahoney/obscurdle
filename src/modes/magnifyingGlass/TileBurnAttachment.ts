@@ -1,262 +1,141 @@
 import Phaser from "phaser"
-import type { TileView } from "../../presentation/TileView"
+import type { LetterCell } from "../../presentation/board/LetterCell"
 import { GAME_LAYOUT } from "../../style/layout"
-import { accumulatedHeat } from "./burnExposure"
+import { paintBurnTexture } from "./burnTexturePainter"
 import { MAGNIFYING_GLASS_CONFIG } from "./magnifyingGlassConfig"
-import type { LensPoint } from "./LensMotionModel"
-
-function smoothStep(start: number, end: number, value: number): number {
-  const amount = Math.min(Math.max((value - start) / (end - start), 0), 1)
-  return amount * amount * (3 - 2 * amount)
-}
-
-function cellVariation(seed: number, index: number): number {
-  const value = Math.sin(seed * 41.7 + index * 127.1) * 43_758.5453
-  return 0.82 + (value - Math.floor(value)) * 0.36
-}
-
-function cellRandom(seed: number, index: number, channel: number): number {
-  const value =
-    Math.sin(
-      seed * 53.3 +
-        index * 173.7 +
-        channel * 97.1,
-    ) * 24_634.6345
-  return value - Math.floor(value)
-}
-
-function colorChannel(color: number, shift: number): number {
-  return (color >> shift) & 0xff
-}
-
-function mixColor(first: number, second: number, amount: number): number {
-  const mixChannel = (shift: number) =>
-    Math.round(
-      Phaser.Math.Linear(
-        colorChannel(first, shift),
-        colorChannel(second, shift),
-        amount,
-      ),
-    )
-
-  return (mixChannel(16) << 16) | (mixChannel(8) << 8) | mixChannel(0)
-}
-
-function colorWithAlpha(color: number, alpha: number): string {
-  return `rgba(${colorChannel(color, 16)}, ${colorChannel(
-    color,
-    8,
-  )}, ${colorChannel(color, 0)}, ${Phaser.Math.Clamp(alpha, 0, 1)})`
-}
+import { paintPaperAperture } from "./paperAperturePainter"
+import type { TileBurnPresentationState } from "./TileBurnModel"
 
 let nextBurnTextureId = 0
 
 export class TileBurnAttachment {
-  private readonly texture: Phaser.Textures.CanvasTexture
-  private readonly image: Phaser.GameObjects.Image
-  private readonly context: CanvasRenderingContext2D
-  private readonly heat: Float32Array
+  private readonly scorchTexture: Phaser.Textures.CanvasTexture
+  private readonly scorchImage: Phaser.GameObjects.Image
+  private readonly scorchContext: CanvasRenderingContext2D
+  private readonly apertureTexture: Phaser.Textures.CanvasTexture
+  private readonly apertureImage: Phaser.GameObjects.Image
+  private readonly apertureContext: CanvasRenderingContext2D
+  private renderedVersion = 0
   private lastRedrawAt = -Infinity
-  private dirty = false
 
   constructor(
-    private readonly tile: TileView,
+    private readonly tile: LetterCell,
     private readonly seed: number,
   ) {
     const burn = MAGNIFYING_GLASS_CONFIG.burn
-    const gridSize = burn.gridSize
-    this.heat = new Float32Array(gridSize * gridSize)
-    const textureKey = `obscurdle-burn-${nextBurnTextureId++}`
-    const texture = tile.scene.textures.createCanvas(
-      textureKey,
+    const textureId = nextBurnTextureId++
+    const scorchTextureKey = `obscurdle-burn-${textureId}`
+    const scorchTexture = tile.scene.textures.createCanvas(
+      scorchTextureKey,
       burn.textureSize,
       burn.textureSize,
     )
-    if (!texture) {
-      throw new Error(`Unable to create burn texture: ${textureKey}`)
+    if (!scorchTexture) {
+      throw new Error(`Unable to create burn texture: ${scorchTextureKey}`)
+    }
+    const apertureTextureKey = `obscurdle-burn-aperture-${textureId}`
+    const apertureTexture = tile.scene.textures.createCanvas(
+      apertureTextureKey,
+      burn.textureSize,
+      burn.textureSize,
+    )
+    if (!apertureTexture) {
+      scorchTexture.destroy()
+      throw new Error(
+        `Unable to create burn aperture texture: ${apertureTextureKey}`,
+      )
     }
 
-    this.texture = texture
-    this.context = texture.getContext()
-    this.image = tile.scene.add
-      .image(0, 0, textureKey)
+    this.scorchTexture = scorchTexture
+    this.scorchContext = scorchTexture.getContext()
+    this.scorchImage = tile.scene.add
+      .image(0, 0, scorchTextureKey)
       .setDisplaySize(
         GAME_LAYOUT.board.tileSize,
         GAME_LAYOUT.board.tileSize,
       )
       .setBlendMode(Phaser.BlendModes.MULTIPLY)
-    tile.attachOverlay(this.image, {
+    this.apertureTexture = apertureTexture
+    this.apertureContext = apertureTexture.getContext()
+    this.apertureImage = tile.scene.add
+      .image(0, 0, apertureTextureKey)
+      .setDisplaySize(
+        GAME_LAYOUT.board.tileSize,
+        GAME_LAYOUT.board.tileSize,
+      )
+      .setBlendMode(Phaser.BlendModes.NORMAL)
+
+    tile.attachOverlay(this.scorchImage, {
       // Phaser's masked reveal does not compose correctly when a preceding
       // child uses MULTIPLY. NORMAL is visually equivalent over transparent
       // pixels and keeps the live burn above both reveal letter layers.
       onRevealStart: () => {
-        this.image.setBlendMode(Phaser.BlendModes.NORMAL)
+        this.scorchImage.setBlendMode(Phaser.BlendModes.NORMAL)
       },
       onRevealComplete: () => {
-        this.image.setBlendMode(Phaser.BlendModes.MULTIPLY)
+        this.scorchImage.setBlendMode(Phaser.BlendModes.MULTIPLY)
       },
     })
+    // The aperture is a material replacement, not a tint. NORMAL blending
+    // keeps its black opening and dimensional rim above every letter layer.
+    tile.attachOverlay(this.apertureImage)
   }
 
-  applyExposure(
-    focalPoint: LensPoint,
-    deltaSeconds: number,
-    nowMs: number,
-    heatGainPerSecond: number =
-      MAGNIFYING_GLASS_CONFIG.burn.heatGainPerSecond,
-  ): void {
+  apply(state: TileBurnPresentationState, nowMs: number): void {
     const burn = MAGNIFYING_GLASS_CONFIG.burn
-    const focal = MAGNIFYING_GLASS_CONFIG.focalSpot
-    const tileSize = GAME_LAYOUT.board.tileSize
-    const halfTile = tileSize / 2
-    const centerDistance = Math.hypot(
-      focalPoint.x - this.tile.x,
-      focalPoint.y - this.tile.y,
-    )
-    if (centerDistance > halfTile * Math.SQRT2 + focal.radius * 3) {
-      return
-    }
+    if (
+      state.version === this.renderedVersion ||
+      nowMs - this.lastRedrawAt < burn.redrawIntervalMs
+    ) return
 
-    const cellSize = tileSize / burn.gridSize
-    for (let row = 0; row < burn.gridSize; row += 1) {
-      for (let column = 0; column < burn.gridSize; column += 1) {
-        const index = row * burn.gridSize + column
-        const cellX =
-          this.tile.x - halfTile + (column + 0.5) * cellSize
-        const cellY =
-          this.tile.y - halfTile + (row + 0.5) * cellSize
-        const distance = Math.hypot(
-          focalPoint.x - cellX,
-          focalPoint.y - cellY,
-        )
-        const previous = this.heat[index]!
-        const next = accumulatedHeat(previous, distance, deltaSeconds, {
-          radius: focal.radius,
-          intensity: focal.intensity,
-          gainPerSecond: heatGainPerSecond,
-          maximumHeat: burn.maximumHeat,
-        })
-        if (next > previous + 0.0001) {
-          this.heat[index] = next
-          this.dirty = true
-        }
-      }
-    }
-
-    if (this.dirty && nowMs - this.lastRedrawAt >= burn.redrawIntervalMs) {
-      this.redraw()
-      this.lastRedrawAt = nowMs
-      this.dirty = false
-    }
+    this.redraw(state.heat)
+    this.renderedVersion = state.version
+    this.lastRedrawAt = nowMs
   }
 
   destroy(): void {
-    this.tile.detachOverlay(this.image)
-    this.image.destroy()
-    this.texture.destroy()
+    this.tile.detachOverlay(this.scorchImage)
+    this.tile.detachOverlay(this.apertureImage)
+    this.scorchImage.destroy()
+    this.apertureImage.destroy()
+    this.scorchTexture.destroy()
+    this.apertureTexture.destroy()
   }
 
-  private redraw(): void {
+  private redraw(heat: Float32Array): void {
     const burn = MAGNIFYING_GLASS_CONFIG.burn
     const tileSize = GAME_LAYOUT.board.tileSize
-    const halfTile = tileSize / 2
     const cellSize = tileSize / burn.gridSize
     const rasterScale = burn.textureSize / tileSize
-    const mark = burn.mark
-    this.context.clearRect(0, 0, burn.textureSize, burn.textureSize)
+    this.scorchContext.clearRect(0, 0, burn.textureSize, burn.textureSize)
+    paintBurnTexture({
+      context: this.scorchContext,
+      heat,
+      seed: this.seed,
+      columns: burn.gridSize,
+      rows: burn.gridSize,
+      cellWidth: cellSize,
+      cellHeight: cellSize,
+      rasterScale,
+    })
+    this.apertureContext.clearRect(
+      0,
+      0,
+      burn.textureSize,
+      burn.textureSize,
+    )
+    paintPaperAperture({
+      context: this.apertureContext,
+      heat,
+      seed: this.seed,
+      columns: burn.gridSize,
+      rows: burn.gridSize,
+      cellWidth: cellSize,
+      cellHeight: cellSize,
+      rasterScale,
+    })
 
-    for (let row = 0; row < burn.gridSize; row += 1) {
-      for (let column = 0; column < burn.gridSize; column += 1) {
-        const index = row * burn.gridSize + column
-        const variedHeat =
-          this.heat[index]! * cellVariation(this.seed, index)
-        if (variedHeat <= burn.brownStartsAt) continue
-
-        const brownAmount = smoothStep(
-          burn.brownStartsAt,
-          burn.charStartsAt,
-          variedHeat,
-        )
-        const charAmount = smoothStep(
-          burn.charStartsAt,
-          burn.maximumHeat,
-          variedHeat,
-        )
-        const brownColor = mixColor(
-          burn.brownColor,
-          burn.deepBrownColor,
-          brownAmount,
-        )
-        const color = mixColor(
-          brownColor,
-          burn.charColor,
-          charAmount,
-        )
-        const alpha = Phaser.Math.Linear(
-          brownAmount * burn.maximumBrownAlpha,
-          burn.maximumCharAlpha,
-          charAmount,
-        ) * (0.78 + cellRandom(this.seed, index, 1) * 0.22)
-        const centerX =
-          -halfTile +
-          (column + 0.5) * cellSize +
-          (cellRandom(this.seed, index, 2) - 0.5) *
-            cellSize *
-            mark.positionJitter
-        const centerY =
-          -halfTile +
-          (row + 0.5) * cellSize +
-          (cellRandom(this.seed, index, 3) - 0.5) *
-            cellSize *
-            mark.positionJitter
-        const radius =
-          cellSize *
-          Phaser.Math.Linear(
-            mark.minimumRadiusInCells,
-            mark.maximumRadiusInCells,
-            cellRandom(this.seed, index, 4),
-          )
-        const rasterX = (centerX + halfTile) * rasterScale
-        const rasterY = (centerY + halfTile) * rasterScale
-        const rasterRadius = radius * rasterScale
-        const gradient = this.context.createRadialGradient(
-          rasterX,
-          rasterY,
-          0,
-          rasterX,
-          rasterY,
-          rasterRadius,
-        )
-
-        // A translucent center and denser outer band preserve the mottled,
-        // ringed marks of the former overlapping vector circles.
-        gradient.addColorStop(
-          0,
-          colorWithAlpha(color, alpha * mark.centerOpacityRatio),
-        )
-        gradient.addColorStop(
-          0.58,
-          colorWithAlpha(color, alpha * mark.middleOpacityRatio),
-        )
-        gradient.addColorStop(
-          mark.darkEdgeStart,
-          colorWithAlpha(color, alpha),
-        )
-        gradient.addColorStop(1, colorWithAlpha(color, 0))
-
-        this.context.fillStyle = gradient
-        this.context.beginPath()
-        this.context.arc(
-          rasterX,
-          rasterY,
-          rasterRadius,
-          0,
-          Math.PI * 2,
-        )
-        this.context.fill()
-      }
-    }
-
-    this.texture.refresh()
+    this.scorchTexture.refresh()
+    this.apertureTexture.refresh()
   }
 }
