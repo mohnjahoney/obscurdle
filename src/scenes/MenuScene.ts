@@ -115,9 +115,6 @@ export class MenuScene extends Phaser.Scene {
       tile.setDepth(8).setAlpha(0)
       this.tweens.add({ targets: tile, alpha: 1, duration: 420, delay: index * 45, ease: "Sine.easeOut" })
     })
-    this.add.text(GAME_LAYOUT.width / 2, GAME_LAYOUT.menu.noteY, "SELECT AN ADDITION", {
-      fontFamily: "'Courier New', monospace", fontSize: "11px", color: "#8d8d8d", letterSpacing: 2, resolution: RENDER_SCALE,
-    }).setOrigin(0.5).setDepth(8)
     window.addEventListener("popstate", this.handlePopState)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener("popstate", this.handlePopState))
   }
