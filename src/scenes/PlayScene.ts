@@ -7,7 +7,6 @@ import {
   markPlayHistory,
   menuStateFromHistory,
 } from "../navigation/browserHistory"
-import { GlobalNavigation } from "../navigation/GlobalNavigation"
 import { BoardRenderer } from "../presentation/board/BoardRenderer"
 import type { BoardPresentationId } from "../presentation/board/BoardPresentation"
 import { BoardPresentationToggle } from "../presentation/board/BoardPresentationToggle"
@@ -67,8 +66,6 @@ export class PlayScene extends Phaser.Scene {
   private modeId: ModeId = "plain"
   private mode!: ObscuringMode
   private modeContext!: ModeContext
-  private navigation!: GlobalNavigation
-  private navigationOpen = false
 
   constructor() {
     super("play")
@@ -127,7 +124,7 @@ export class PlayScene extends Phaser.Scene {
       new PaperBackdrop(this)
     }
 
-    const mastheadTitle = this.createMasthead(initialPresentation.masthead)
+    this.createMasthead(initialPresentation.masthead)
     this.board = this.createBoard(initialPresentation.board.kind)
     this.board.apply(initialPresentation.board)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -158,37 +155,6 @@ export class PlayScene extends Phaser.Scene {
         resolution: RENDER_SCALE,
       })
       .setOrigin(0.5)
-
-    this.add
-      .text(
-        GAME_LAYOUT.width / 2,
-        GAME_LAYOUT.footer.y,
-        initialPresentation.footer.text,
-        {
-          fontFamily: GAME_STYLE.type.bodyFamily,
-          fontSize: `${GAME_STYLE.type.footerSize}px`,
-          color: GAME_STYLE.textColor.faintInk,
-          letterSpacing: 1,
-          resolution: RENDER_SCALE,
-        },
-      )
-      .setOrigin(0.5)
-
-    this.navigation = new GlobalNavigation(this, {
-      currentEdition: modeDefinition(this.modeId).mastheadLabel,
-      hasProgress: () =>
-        this.puzzle.currentGuess.length > 0 || this.puzzle.guesses.length > 0,
-      onNewPuzzle: () => this.scene.restart(),
-      onChooseEdition: () => this.scene.start("menu"),
-      onOpenChange: (open) => {
-        this.navigationOpen = open
-      },
-    })
-    mastheadTitle
-      .setInteractive({ useHandCursor: true })
-      .on(Phaser.Input.Events.POINTER_DOWN, () => {
-        this.navigation.requestChooseEdition()
-      })
 
     this.sceneEffects = this.createSceneEffects()
     this.sceneEffects.apply(initialPresentation.effect)
@@ -223,7 +189,7 @@ export class PlayScene extends Phaser.Scene {
   ): Phaser.GameObjects.Text {
     const title = this.add
       .text(
-        GAME_LAYOUT.page.inset,
+        GAME_LAYOUT.width / 2,
         GAME_LAYOUT.masthead.titleY,
         presentation.title,
         {
@@ -234,29 +200,13 @@ export class PlayScene extends Phaser.Scene {
           resolution: RENDER_SCALE,
         },
       )
-      .setOrigin(0, 0.5)
-
-    this.add
-      .text(
-        GAME_LAYOUT.width / 2,
-        GAME_LAYOUT.masthead.deckY,
-        presentation.deck,
-        {
-          fontFamily: GAME_STYLE.type.displayFamily,
-          fontSize: `${GAME_STYLE.type.deckSize}px`,
-          fontStyle: "italic",
-          color: GAME_STYLE.textColor.mutedInk,
-          resolution: RENDER_SCALE,
-        },
-      )
-      .setOrigin(0.5)
+      .setOrigin(0.5, 0.5)
 
     return title
   }
 
   private typeLetter(letter: string): void {
     if (
-      this.navigationOpen ||
       !this.acceptingInput ||
       !this.puzzle.typeLetter(letter)
     ) {
@@ -340,7 +290,6 @@ export class PlayScene extends Phaser.Scene {
 
   private backspace(): void {
     if (
-      this.navigationOpen ||
       !this.acceptingInput ||
       !this.puzzle.backspace()
     ) {
@@ -350,7 +299,7 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private submit(): void {
-    if (this.navigationOpen || !this.acceptingInput) return
+    if (!this.acceptingInput) return
 
     const result = this.puzzle.submitGuess((context) => {
       return this.mode.transformSubmittedWord?.(context) ?? context.enteredWord
@@ -533,12 +482,6 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private readonly handlePopState = (event: PopStateEvent): void => {
-    if (this.navigation.isOpen) {
-      this.navigation.close()
-      markPlayHistory(this.modeId)
-      return
-    }
-
     if (menuStateFromHistory(event.state)) {
       this.scene.start("menu")
     }

@@ -2,7 +2,6 @@ import Phaser from "phaser"
 import type { ModeId } from "../modes/ObscuringMode"
 import { MENU_MODE_IDS } from "../modes/registry"
 import { markMenuHistory, markPlayHistory, playModeFromHistory } from "../navigation/browserHistory"
-import { GlobalNavigation } from "../navigation/GlobalNavigation"
 import { ModeIconTile, modeTilePosition } from "../presentation/ModeIconTile"
 import { GAME_LAYOUT } from "../style/layout"
 import { GAME_MOTION } from "../style/motion"
@@ -22,6 +21,7 @@ export class MenuScene extends Phaser.Scene {
   private titleText!: Phaser.GameObjects.Text
   private cursor!: Phaser.GameObjects.Rectangle
   private blackout!: Phaser.GameObjects.Rectangle
+  private titleStartX = 0
 
   constructor() { super("menu") }
 
@@ -29,10 +29,12 @@ export class MenuScene extends Phaser.Scene {
     markMenuHistory()
     configureLogicalCamera(this)
     this.add.rectangle(GAME_LAYOUT.width / 2, GAME_LAYOUT.height / 2, GAME_LAYOUT.width, GAME_LAYOUT.height, 0xffffff)
-    this.titleText = this.add.text(28, 235, "", {
+    this.titleText = this.add.text(0, 235, TITLE, {
       fontFamily: "'Courier New', monospace", fontSize: "42px", color: "#111111", resolution: RENDER_SCALE,
     }).setOrigin(0, 0.5)
-    this.cursor = this.add.rectangle(28, 235, 4, 45, 0x111111).setOrigin(0, 0.5)
+    this.titleStartX = GAME_LAYOUT.width / 2 - this.titleText.width / 2
+    this.titleText.setX(this.titleStartX).setText("")
+    this.cursor = this.add.rectangle(this.titleStartX, 235, 4, 45, 0x111111).setOrigin(0, 0.5)
     this.blackout = this.add.rectangle(GAME_LAYOUT.width / 2, GAME_LAYOUT.height / 2, GAME_LAYOUT.width, GAME_LAYOUT.height, 0x000000).setAlpha(0).setDepth(5)
     this.titleText.setDepth(6)
     this.cursor.setDepth(7)
@@ -80,7 +82,7 @@ export class MenuScene extends Phaser.Scene {
   private updateBlank(): void {
     if (this.phaseElapsed < 0.5) return
     this.phase = "revealing"; this.phaseElapsed = 0
-    this.titleText.setText(TITLE).setColor("#ffffff").setOrigin(0.5, 0.5).setX(GAME_LAYOUT.width / 2)
+    this.titleText.setText(TITLE).setColor("#ffffff")
   }
 
   private updateReveal(): void {
@@ -97,10 +99,8 @@ export class MenuScene extends Phaser.Scene {
   }
 
   private updateCursor(): void {
-    const titleLeft = this.phase === "revealing" || this.phase === "settling" || this.phase === "menu"
-      ? GAME_LAYOUT.width / 2 - this.titleText.width / 2
-      : 28
-    this.cursor.x = titleLeft + this.titleText.width + 4
+    const cursorAtStart = this.phase === "blank" || this.phase === "revealing" || this.phase === "settling" || this.phase === "menu"
+    this.cursor.x = cursorAtStart ? this.titleStartX : this.titleStartX + this.titleText.width + 4
     const blinkOn = Math.floor(this.phaseElapsed / 0.34) % 2 === 0
     this.cursor.setVisible(blinkOn || this.phase === "revealing" || this.phase === "settling" || this.phase === "menu")
     this.cursor.setFillStyle(this.phase === "revealing" || this.phase === "settling" || this.phase === "menu" ? 0xffffff : 0x111111)
@@ -118,7 +118,6 @@ export class MenuScene extends Phaser.Scene {
     this.add.text(GAME_LAYOUT.width / 2, GAME_LAYOUT.menu.noteY, "SELECT AN ADDITION", {
       fontFamily: "'Courier New', monospace", fontSize: "11px", color: "#8d8d8d", letterSpacing: 2, resolution: RENDER_SCALE,
     }).setOrigin(0.5).setDepth(8)
-    new GlobalNavigation(this)
     window.addEventListener("popstate", this.handlePopState)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => window.removeEventListener("popstate", this.handlePopState))
   }
