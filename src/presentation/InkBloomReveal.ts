@@ -20,6 +20,9 @@ interface InkBloomRevealOptions {
   presentation: BoardPresentationId
   pigmentFrame: number
   delay: number
+  duration?: number
+  crossfade?: boolean
+  originalLetter?: Phaser.GameObjects.Text
   legibleProgress?: number
   onLegible?(): void
   onComplete(visual: LetterCellVisual): void
@@ -37,6 +40,8 @@ export class InkBloomReveal {
   private readonly onComplete: (visual: LetterCellVisual) => void
   private readonly onLegible?: () => void
   private readonly legibleProgress: number
+  private readonly crossfade: boolean
+  private readonly originalLetter?: Phaser.GameObjects.Text
   private tween?: Phaser.Tweens.Tween
   private destroyed = false
   private promoted = false
@@ -48,6 +53,8 @@ export class InkBloomReveal {
     this.onComplete = options.onComplete
     this.onLegible = options.onLegible
     this.legibleProgress = Phaser.Math.Clamp(options.legibleProgress ?? 0, 0, 1)
+    this.crossfade = options.crossfade === true
+    this.originalLetter = options.originalLetter
 
     const size = GAME_LAYOUT.board.tileSize
     const parameters = createInkBloomParameters()
@@ -65,6 +72,7 @@ export class InkBloomReveal {
       .setSize(size, size)
       .setVisible(false)
     options.parent.add(this.evaluatedLayer)
+    if (this.crossfade) this.evaluatedVisual.letter.setAlpha(0)
 
     this.maskShader = options.scene.add.shader(
       {
@@ -100,7 +108,7 @@ export class InkBloomReveal {
     this.tween = options.scene.tweens.add({
       targets: this.progress,
       value: 1,
-      duration: GAME_MOTION.tile.inkBloom.duration,
+      duration: options.duration ?? GAME_MOTION.tile.inkBloom.duration,
       delay: options.delay,
       ease: "Linear",
       onStart: () => {
@@ -108,6 +116,11 @@ export class InkBloomReveal {
       },
       onUpdate: () => {
         this.maskShader.renderImmediate()
+        if (this.crossfade) {
+          const progress = Phaser.Math.Clamp(this.progress.value, 0, 1)
+          this.originalLetter?.setAlpha(1 - progress)
+          this.evaluatedVisual.letter.setAlpha(progress)
+        }
         this.reportLegibleIfReady()
       },
       onComplete: () => {

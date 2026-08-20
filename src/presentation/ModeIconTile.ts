@@ -15,8 +15,11 @@ const TILE_HEIGHT = 60
 const TILE_RADIUS = 8
 
 export class ModeIconTile extends Phaser.GameObjects.Container {
-  private readonly face: Phaser.GameObjects.Graphics
-  private readonly dark: boolean
+  private readonly lightFace: Phaser.GameObjects.Graphics
+  private readonly darkFace: Phaser.GameObjects.Graphics
+  private readonly lightIcon: Phaser.GameObjects.Graphics
+  private readonly darkIcon: Phaser.GameObjects.Graphics
+  private paletteMix: number
 
   constructor(
     scene: Phaser.Scene,
@@ -26,16 +29,22 @@ export class ModeIconTile extends Phaser.GameObjects.Container {
   ) {
     super(scene, x, y)
     scene.add.existing(this)
-    this.dark = options.dark ?? false
+    this.paletteMix = options.dark ? 1 : 0
+    this.setData("modeId", options.modeId)
 
-    this.face = scene.add.graphics()
-    this.drawFace(false)
+    this.lightFace = scene.add.graphics()
+    this.darkFace = scene.add.graphics()
+    this.drawFace(this.lightFace, false, false)
+    this.drawFace(this.darkFace, true, false)
     this.setSize(TILE_WIDTH, TILE_HEIGHT).setInteractive({ useHandCursor: true })
 
-    const icon = scene.add.graphics()
-    drawModeIcon(icon, options.modeId, options.dark ?? false)
+    this.lightIcon = scene.add.graphics()
+    this.darkIcon = scene.add.graphics()
+    drawModeIcon(this.lightIcon, options.modeId, false)
+    drawModeIcon(this.darkIcon, options.modeId, true)
 
-    this.add([this.face, icon])
+    this.add([this.lightFace, this.darkFace, this.lightIcon, this.darkIcon])
+    this.setPaletteMix(this.paletteMix)
     this.on(Phaser.Input.Events.POINTER_DOWN, () => {
       options.onPress()
       scene.tweens.add({
@@ -47,22 +56,37 @@ export class ModeIconTile extends Phaser.GameObjects.Container {
       })
     })
     this.on(Phaser.Input.Events.POINTER_OVER, () => {
-      this.drawFace(true)
+      this.drawFace(this.lightFace, false, true)
+      this.drawFace(this.darkFace, true, true)
     })
     this.on(Phaser.Input.Events.POINTER_OUT, () => {
-      this.drawFace(false)
+      this.drawFace(this.lightFace, false, false)
+      this.drawFace(this.darkFace, true, false)
     })
   }
 
-  private drawFace(hovered: boolean): void {
-    const fill = this.dark ? (hovered ? 0x242424 : 0x111111) : GAME_STYLE.color.paperLight
-    const stroke = this.dark ? 0xffffff : hovered ? GAME_STYLE.color.ink : GAME_STYLE.color.rule
-    const alpha = this.dark ? 0.82 : GAME_STYLE.alpha.rule
-    this.face.clear()
-    this.face.fillStyle(fill, 1)
-    this.face.fillRoundedRect(-TILE_WIDTH / 2, -TILE_HEIGHT / 2, TILE_WIDTH, TILE_HEIGHT, TILE_RADIUS)
-    this.face.lineStyle(hovered ? GAME_STYLE.rule.medium : GAME_STYLE.rule.thin, stroke, alpha)
-    this.face.strokeRoundedRect(-TILE_WIDTH / 2, -TILE_HEIGHT / 2, TILE_WIDTH, TILE_HEIGHT, TILE_RADIUS)
+  setPaletteMix(mix: number): this {
+    this.paletteMix = Phaser.Math.Clamp(mix, 0, 1)
+    this.lightFace.setAlpha(1 - this.paletteMix)
+    this.lightIcon.setAlpha(1 - this.paletteMix)
+    this.darkFace.setAlpha(this.paletteMix)
+    this.darkIcon.setAlpha(this.paletteMix)
+    return this
+  }
+
+  setDark(dark: boolean): this {
+    return this.setPaletteMix(dark ? 1 : 0)
+  }
+
+  private drawFace(face: Phaser.GameObjects.Graphics, dark: boolean, hovered: boolean): void {
+    const fill = dark ? (hovered ? GAME_STYLE.color.mutedInk : GAME_STYLE.color.ink) : GAME_STYLE.color.paperLight
+    const stroke = dark ? GAME_STYLE.color.paperLight : hovered ? GAME_STYLE.color.ink : GAME_STYLE.color.rule
+    const alpha = dark ? 0.82 : GAME_STYLE.alpha.rule
+    face.clear()
+    face.fillStyle(fill, 1)
+    face.fillRoundedRect(-TILE_WIDTH / 2, -TILE_HEIGHT / 2, TILE_WIDTH, TILE_HEIGHT, TILE_RADIUS)
+    face.lineStyle(hovered ? GAME_STYLE.rule.medium : GAME_STYLE.rule.thin, stroke, alpha)
+    face.strokeRoundedRect(-TILE_WIDTH / 2, -TILE_HEIGHT / 2, TILE_WIDTH, TILE_HEIGHT, TILE_RADIUS)
   }
 }
 
@@ -71,29 +95,21 @@ function drawModeIcon(
   modeId: ModeId,
   dark = false,
 ): void {
-  const ink = dark ? 0xffffff : GAME_STYLE.color.ink
-  const paper = dark ? 0x111111 : GAME_STYLE.color.paper
-  const accent = dark ? 0xffffff : GAME_STYLE.color.present
+  const ink = dark ? GAME_STYLE.color.paperLight : GAME_STYLE.color.ink
+  const paper = dark ? GAME_STYLE.color.ink : GAME_STYLE.color.paper
+  const accent = dark ? GAME_STYLE.color.paperLight : GAME_STYLE.color.present
   graphics.lineStyle(2, ink, 0.9)
   graphics.fillStyle(paper, 1)
 
   switch (modeId) {
     case "misprint":
-      graphics.strokeLineShape(new Phaser.Geom.Line(-25, -10, 25, 9))
-      graphics.lineStyle(3, dark ? 0xffffff : GAME_STYLE.editorial.strike.color, GAME_STYLE.editorial.strike.alpha)
-      graphics.strokeLineShape(new Phaser.Geom.Line(-28, 8, 28, -8))
+      drawSwitchArrow(graphics, ink, 1)
       break
     case "fading-ink":
-      graphics.strokeRect(-27, -13, 18, 24)
-      graphics.strokeRect(-3, -13, 18, 24)
-      graphics.strokeRect(21, -13, 8, 24)
-      graphics.lineStyle(2, dark ? 0xffffff : GAME_STYLE.color.faintInk, dark ? 0.32 : 0.45)
-      graphics.strokeRect(-27, -13, 56, 24)
+      drawFadingInkIcon(graphics, ink, dark)
       break
     case "sneaking-tiles":
-      graphics.strokeRect(-27, -10, 20, 20)
-      graphics.strokeRect(-8, -4, 20, 20)
-      graphics.strokeRect(11, -10, 20, 20)
+      drawSneakingTilesIcon(graphics, ink)
       break
     case "magnifying-glass":
       graphics.strokeCircle(-5, -4, 15)
@@ -102,22 +118,32 @@ function drawModeIcon(
       graphics.fillCircle(-9, -8, 5)
       break
     case "flashlight":
-      graphics.fillStyle(GAME_STYLE.color.ink, 0.9)
-      graphics.fillTriangle(-25, -8, -25, 8, -11, 4)
+      graphics.fillStyle(ink, dark ? 0.96 : 0.9)
+      graphics.fillRoundedRect(-35, -5.5, 24, 11, 2)
+      graphics.fillPoints([
+        new Phaser.Math.Vector2(-13, -5),
+        new Phaser.Math.Vector2(-1, -11),
+        new Phaser.Math.Vector2(-1, 11),
+        new Phaser.Math.Vector2(-13, 5),
+      ], true)
+      graphics.lineStyle(2, ink, 0.95)
+      graphics.strokeLineShape(new Phaser.Geom.Line(-13, -5, -1, -9))
+      graphics.strokeLineShape(new Phaser.Geom.Line(-1, -9, -1, 9))
+      graphics.strokeLineShape(new Phaser.Geom.Line(-1, 9, -13, 5))
       graphics.lineStyle(2, accent, 0.8)
-      graphics.strokeLineShape(new Phaser.Geom.Line(-8, -5, 27, -13))
-      graphics.strokeLineShape(new Phaser.Geom.Line(-8, 0, 30, 0))
-      graphics.strokeLineShape(new Phaser.Geom.Line(-8, 5, 27, 13))
+      graphics.strokeLineShape(new Phaser.Geom.Line(-1, -5, 27, -13))
+      graphics.strokeLineShape(new Phaser.Geom.Line(-1, 0, 30, 0))
+      graphics.strokeLineShape(new Phaser.Geom.Line(-1, 5, 27, 13))
       break
     case "candlelight":
       graphics.fillStyle(accent, 0.35)
-      graphics.fillCircle(0, 4, 24)
+      graphics.fillCircle(0, 4, 17)
       graphics.fillStyle(accent, 1)
-      graphics.fillTriangle(0, -19, -8, -2, 0, 8)
-      graphics.fillTriangle(0, -19, 8, -2, 0, 8)
-      graphics.fillStyle(dark ? 0x111111 : GAME_STYLE.color.paperLight, 1)
-      graphics.fillTriangle(0, -12, -3, -2, 0, 3)
-      graphics.fillTriangle(0, -12, 3, -2, 0, 3)
+      graphics.fillTriangle(0, -26, -9, 2, 0, 7)
+      graphics.fillTriangle(0, -26, 9, 2, 0, 7)
+      graphics.fillStyle(dark ? GAME_STYLE.color.ink : GAME_STYLE.color.paperLight, 1)
+      graphics.fillTriangle(0, -12, -4, 0, 0, 4)
+      graphics.fillTriangle(0, -12, 4, 0, 0, 4)
       break
     case "plain":
       graphics.strokeRect(-27, -13, 54, 26)
@@ -126,6 +152,84 @@ function drawModeIcon(
       graphics.strokeLineShape(new Phaser.Geom.Line(-18, 3, 18, 3))
       break
   }
+}
+
+function drawSwitchArrow(graphics: Phaser.GameObjects.Graphics, color: number, alpha: number): void {
+  const upperToLower = [[-28, -12], [-6, -21], [6, 21], [28, 12]] as const
+  const lowerToUpper = [[28, -12], [6, -21], [-6, 21], [-28, 12]] as const
+  const drawPath = (points: readonly (readonly [number, number])[]): void => {
+    graphics.beginPath()
+    graphics.moveTo(points[0]![0], points[0]![1])
+    for (let i = 1; i <= 16; i += 1) {
+      const t = i / 16
+      const inverse = 1 - t
+      const x = inverse ** 3 * points[0]![0]
+        + 3 * inverse ** 2 * t * points[1]![0]
+        + 3 * inverse * t ** 2 * points[2]![0]
+        + t ** 3 * points[3]![0]
+      const y = inverse ** 3 * points[0]![1]
+        + 3 * inverse ** 2 * t * points[1]![1]
+        + 3 * inverse * t ** 2 * points[2]![1]
+        + t ** 3 * points[3]![1]
+      graphics.lineTo(x, y)
+    }
+    graphics.strokePath()
+  }
+
+  // A small dark keyline keeps the two switching paths legible where they cross.
+  graphics.lineStyle(5, GAME_STYLE.color.ink, 1)
+  drawPath(upperToLower)
+  drawPath(lowerToUpper)
+  graphics.lineStyle(3, color, alpha)
+  drawPath(upperToLower)
+  drawPath(lowerToUpper)
+}
+
+function drawFadingInkIcon(
+  graphics: Phaser.GameObjects.Graphics,
+  ink: number,
+  dark: boolean,
+): void {
+  const tileXs = [-27, -8, 11]
+  const bands = [
+    { y: -12, height: 6, alpha: 0.2 },
+    { y: -6, height: 6, alpha: 0.42 },
+    { y: 0, height: 6, alpha: 0.7 },
+    { y: 6, height: 6, alpha: 0.95 },
+  ]
+  for (const x of tileXs) {
+    for (const band of bands) {
+      graphics.fillStyle(ink, band.alpha)
+      graphics.fillRect(x, band.y, 16, band.height)
+      graphics.lineStyle(1, ink, band.alpha)
+      graphics.strokeRect(x, band.y, 16, band.height)
+    }
+  }
+
+  const flecks = [
+    { x: -23, y: -16, size: 1.8, alpha: 0.45 },
+    { x: -11, y: -18, size: 1.2, alpha: 0.32 },
+    { x: 0, y: -15, size: 2.2, alpha: 0.5 },
+    { x: 8, y: -19, size: 1.1, alpha: 0.26 },
+    { x: 18, y: -16, size: 1.6, alpha: 0.38 },
+    { x: 28, y: -20, size: 0.9, alpha: 0.2 },
+  ]
+  for (const fleck of flecks) {
+    graphics.fillStyle(ink, dark ? fleck.alpha : fleck.alpha * 0.85)
+    graphics.fillRect(fleck.x, fleck.y, fleck.size, fleck.size)
+  }
+}
+
+function drawSneakingTilesIcon(
+  graphics: Phaser.GameObjects.Graphics,
+  ink: number,
+): void {
+  graphics.lineStyle(1.5, ink, 0.2)
+  graphics.strokeRect(0, -15, 20, 20)
+  graphics.lineStyle(2, ink, 0.9)
+  graphics.strokeRect(-32, -10, 20, 20)
+  graphics.strokeRect(-10, -10, 20, 20)
+  graphics.strokeRect(12, -10, 20, 20)
 }
 
 export function modeTilePosition(index: number): { x: number; y: number } {

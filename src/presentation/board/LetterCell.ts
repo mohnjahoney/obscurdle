@@ -113,6 +113,12 @@ export class LetterCell extends Phaser.GameObjects.Container {
       return
     }
 
+    const crossfade = this.presentation === "bare" && legibleProgress !== undefined
+    const transitionDuration =
+      result === "absent"
+        ? GAME_MOTION.editorial.strikeDuration
+        : GAME_MOTION.editorial.highlightDuration
+
     this.activeReveal = new InkBloomReveal({
       scene: this.scene,
       parent: this,
@@ -121,6 +127,9 @@ export class LetterCell extends Phaser.GameObjects.Container {
       presentation: this.presentation,
       pigmentFrame: this.pigmentFrame,
       delay,
+      duration: crossfade ? transitionDuration : undefined,
+      crossfade,
+      originalLetter: this.visual.letter,
       legibleProgress,
       onLegible,
       onComplete: (evaluatedVisual) => {

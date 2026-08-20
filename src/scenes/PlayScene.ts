@@ -176,7 +176,6 @@ export class PlayScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       window.removeEventListener("popstate", this.handlePopState)
     })
-    this.cameras.main.fadeIn(GAME_MOTION.scene.fadeDuration)
   }
 
   update(_time: number, deltaMs: number): void {
@@ -187,20 +186,23 @@ export class PlayScene extends Phaser.Scene {
   private createMasthead(
     presentation: MastheadPresentationModel,
   ): Phaser.GameObjects.Text {
+    const targetY = GAME_LAYOUT.masthead.titleY
     const title = this.add
       .text(
         GAME_LAYOUT.width / 2,
-        GAME_LAYOUT.masthead.titleY,
+        targetY,
         presentation.title,
         {
-          fontFamily: GAME_STYLE.type.displayFamily,
-          fontSize: `${GAME_STYLE.type.tileSize}px`,
-          fontStyle: "bold",
+          fontFamily: "'Courier New', monospace",
+          fontSize: `${GAME_STYLE.type.titleSize}px`,
+          fontStyle: "normal",
           color: GAME_STYLE.textColor.ink,
           resolution: RENDER_SCALE,
         },
       )
       .setOrigin(0.5, 0.5)
+      .setAlpha(0.14)
+      .setDepth(2)
 
     return title
   }
@@ -460,7 +462,7 @@ export class PlayScene extends Phaser.Scene {
         )
         .setOrigin(0.5)
         .setInteractive({ useHandCursor: true })
-      menu.on(Phaser.Input.Events.POINTER_DOWN, () => this.scene.start("menu"))
+      menu.on(Phaser.Input.Events.POINTER_DOWN, () => this.scene.start("menu", { skipIntro: true }))
 
       const dialogObjects = [overlay, panel, title, body, again, menu]
       dialogObjects.forEach((object) => {
@@ -483,7 +485,7 @@ export class PlayScene extends Phaser.Scene {
 
   private readonly handlePopState = (event: PopStateEvent): void => {
     if (menuStateFromHistory(event.state)) {
-      this.scene.start("menu")
+      this.scene.start("menu", { skipIntro: true })
     }
   }
 }
