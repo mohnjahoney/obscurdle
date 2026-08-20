@@ -41,6 +41,7 @@ export class MenuScene extends Phaser.Scene {
   private typed = 0
   private erased = 0
   private titleText!: Phaser.GameObjects.Text
+  private titleRules!: Phaser.GameObjects.Graphics
   private cursor!: Phaser.GameObjects.Graphics
   private blackout!: Phaser.GameObjects.Rectangle
   private titleStartX = 0
@@ -57,6 +58,7 @@ export class MenuScene extends Phaser.Scene {
     markMenuHistory()
     configureLogicalCamera(this)
     this.add.rectangle(GAME_LAYOUT.width / 2, GAME_LAYOUT.height / 2, GAME_LAYOUT.width, GAME_LAYOUT.height, GAME_STYLE.color.paper)
+    this.titleRules = this.createTitleRules()
     const directMenu = data.skipIntro === true
     const titleY = directMenu ? GAME_LAYOUT.masthead.titleY : 235
     this.titleText = this.add.text(0, titleY, TITLE, {
@@ -72,10 +74,12 @@ export class MenuScene extends Phaser.Scene {
     if (directMenu) {
       this.phase = "menu"
       this.titleText.setAlpha(0.14)
+      this.titleRules.setAlpha(1)
       this.createModeMenu(true, 0, false)
       return
     }
 
+    this.titleRules.setAlpha(0)
     this.titleText.setText("")
     this.cursor = this.add.graphics().setPosition(this.titleStartX, 235)
     this.drawCursor(GAME_STYLE.color.ink)
@@ -191,6 +195,7 @@ export class MenuScene extends Phaser.Scene {
       .setColor(mixColor(TITLE_LIGHT, TITLE_DARK, eased))
       .setAlpha(0.14)
       .setY(235 + (GAME_LAYOUT.masthead.titleY - 235) * eased)
+    this.titleRules.setAlpha(eased)
     this.modeTiles.forEach(tile => tile.setPaletteMix(1))
     if (progress >= 1) {
       this.phase = "settling"
@@ -205,6 +210,7 @@ export class MenuScene extends Phaser.Scene {
       .setColor(GAME_STYLE.textColor.ink)
       .setAlpha(0.14)
       .setY(GAME_LAYOUT.masthead.titleY)
+    this.titleRules.setAlpha(1)
     this.cursor.setVisible(false)
     this.unbindIntroInput()
   }
@@ -234,6 +240,29 @@ export class MenuScene extends Phaser.Scene {
     this.cursor.clear()
     this.cursor.fillStyle(color, 1)
     this.cursor.fillRoundedRect(0, -22.5, 4, 45, 1.5)
+  }
+
+  private createTitleRules(): Phaser.GameObjects.Graphics {
+    const rules = this.add.graphics().setDepth(0)
+    rules.lineStyle(
+      GAME_STYLE.rule.thin,
+      GAME_STYLE.color.lightRule,
+      GAME_STYLE.alpha.softRule,
+    )
+    const inset = GAME_LAYOUT.page.inset
+    rules.lineBetween(
+      inset,
+      GAME_LAYOUT.masthead.topRuleY,
+      GAME_LAYOUT.width - inset,
+      GAME_LAYOUT.masthead.topRuleY,
+    )
+    rules.lineBetween(
+      inset,
+      GAME_LAYOUT.masthead.bottomRuleY,
+      GAME_LAYOUT.width - inset,
+      GAME_LAYOUT.masthead.bottomRuleY,
+    )
+    return rules
   }
 
   private resetCursorStaticTime(): void {

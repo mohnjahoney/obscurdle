@@ -63,8 +63,8 @@ export const GAME_STYLE = {
   },
   writtenWord: {
     left: 158,
-    tracking: 2,
-    trackingVariationPerRow: 0.8,
+    tracking: 4,
+    trackingVariationPerRow: 4,
     startVariationPerRow: 4,
     baselineVariationPerRow: 0.8,
     baselineVariationPerLetter: 0.25,

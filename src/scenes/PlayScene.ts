@@ -360,7 +360,11 @@ export class PlayScene extends Phaser.Scene {
       GAME_MOTION.tile.inkBloom.duration +
       GAME_MOTION.tile.revealStagger * (wordLength - 1)
 
-    this.time.delayedCall(revealDuration, () => {
+    const recognitionDelay = Math.min(
+      revealDuration,
+      GAME_MOTION.dialog.resultRecognitionDelay,
+    )
+    this.time.delayedCall(recognitionDelay, () => {
       if (status !== "playing") this.showResult(status)
     })
   }
@@ -406,22 +410,25 @@ export class PlayScene extends Phaser.Scene {
         GAME_STYLE.alpha.rule,
       )
 
-      const title = this.add
-        .text(
-          GAME_LAYOUT.width / 2,
-          GAME_LAYOUT.dialog.y + GAME_LAYOUT.dialog.titleOffsetY,
-          status === "won" ? "Solved." : "Edition closed.",
-          {
-            fontFamily: GAME_STYLE.type.displayFamily,
-            fontSize: `${GAME_STYLE.type.dialogTitleSize}px`,
-            fontStyle: "bold",
-            color: GAME_STYLE.textColor.ink,
-            resolution: RENDER_SCALE,
-          },
-        )
-        .setOrigin(0.5)
+      const title = status === "won"
+        ? this.add
+            .text(
+              GAME_LAYOUT.width / 2,
+              GAME_LAYOUT.dialog.y + GAME_LAYOUT.dialog.titleOffsetY,
+              "Solved.",
+              {
+                fontFamily: GAME_STYLE.type.displayFamily,
+                fontSize: `${GAME_STYLE.type.dialogTitleSize}px`,
+                fontStyle: "bold",
+                color: GAME_STYLE.textColor.ink,
+                resolution: RENDER_SCALE,
+              },
+            )
+            .setOrigin(0.5)
+        : undefined
 
-      const body = this.add
+      const body = status === "won"
+        ? this.add
         .text(
           GAME_LAYOUT.width / 2,
           GAME_LAYOUT.dialog.y + GAME_LAYOUT.dialog.bodyOffsetY,
@@ -438,6 +445,40 @@ export class PlayScene extends Phaser.Scene {
           },
         )
         .setOrigin(0.5)
+        : undefined
+
+      const answerLabel = status === "lost"
+        ? this.add
+            .text(
+              GAME_LAYOUT.width / 2,
+              GAME_LAYOUT.dialog.y + GAME_LAYOUT.dialog.answerLabelOffsetY,
+              "The word was",
+              {
+                fontFamily: GAME_STYLE.type.bodyFamily,
+                fontSize: `${GAME_STYLE.type.dialogBodySize}px`,
+                color: GAME_STYLE.textColor.mutedInk,
+                resolution: RENDER_SCALE,
+              },
+            )
+            .setOrigin(0.5)
+        : undefined
+
+      const answerWord = status === "lost"
+        ? this.add
+            .text(
+              GAME_LAYOUT.width / 2,
+              GAME_LAYOUT.dialog.y + GAME_LAYOUT.dialog.answerWordOffsetY,
+              this.puzzle.answer,
+              {
+                fontFamily: GAME_STYLE.type.displayFamily,
+                fontSize: `${GAME_STYLE.type.dialogTitleSize - 4}px`,
+                fontStyle: "bold",
+                color: GAME_STYLE.textColor.editorialCorrect,
+                resolution: RENDER_SCALE,
+              },
+            )
+            .setOrigin(0.5)
+        : undefined
 
       const again = new Button(
         this,
@@ -451,7 +492,7 @@ export class PlayScene extends Phaser.Scene {
         .text(
           GAME_LAYOUT.width / 2,
           GAME_LAYOUT.dialog.y + GAME_LAYOUT.dialog.secondaryButtonOffsetY,
-          "RETURN TO FRONT PAGE",
+          "CHOOSE GAME MODE",
           {
             fontFamily: GAME_STYLE.type.bodyFamily,
             fontSize: `${GAME_STYLE.type.footerSize}px`,
@@ -464,7 +505,16 @@ export class PlayScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true })
       menu.on(Phaser.Input.Events.POINTER_DOWN, () => this.scene.start("menu", { skipIntro: true }))
 
-      const dialogObjects = [overlay, panel, title, body, again, menu]
+      const dialogObjects = [
+        overlay,
+        panel,
+        ...(title ? [title] : []),
+        ...(body ? [body] : []),
+        ...(answerLabel ? [answerLabel] : []),
+        ...(answerWord ? [answerWord] : []),
+        again,
+        menu,
+      ]
       dialogObjects.forEach((object) => {
         object.setDepth(GAME_STYLE.depth.dialog)
         object.setAlpha(0)

@@ -25,6 +25,7 @@ export const GAME_MOTION = {
   },
   dialog: {
     delayAfterReveal: 220,
+    resultRecognitionDelay: 3_000,
     enterDuration: 220,
     startScale: 0.96,
   },

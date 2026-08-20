@@ -5,7 +5,7 @@ import { GAME_MOTION } from "../style/motion"
 import { RENDER_SCALE } from "../style/rendering"
 
 export class Button extends Phaser.GameObjects.Container {
-  private readonly face: Phaser.GameObjects.Rectangle
+  private readonly face: Phaser.GameObjects.Graphics
 
   constructor(
     scene: Phaser.Scene,
@@ -24,18 +24,17 @@ export class Button extends Phaser.GameObjects.Container {
     const height = options.compact
       ? GAME_LAYOUT.button.height * 0.78
       : GAME_LAYOUT.button.height
-    const fill = options.inverted ? GAME_STYLE.color.ink : GAME_STYLE.color.paperLight
+    const fill = options.inverted ? GAME_STYLE.color.absent : GAME_STYLE.color.paperLight
     const ink = options.inverted
       ? GAME_STYLE.textColor.paperLight
       : GAME_STYLE.textColor.ink
 
-    this.face = scene.add.rectangle(0, 0, width, height, fill)
-    this.face.setStrokeStyle(
-      GAME_STYLE.dialog.borderWidth,
-      GAME_STYLE.color.ink,
-      GAME_STYLE.alpha.rule,
+    this.face = scene.add.graphics()
+    this.drawFace(fill, width, height)
+    this.face.setInteractive(
+      new Phaser.Geom.Rectangle(-width / 2, -height / 2, width, height),
+      Phaser.Geom.Rectangle.Contains,
     )
-    this.face.setInteractive({ useHandCursor: true })
 
     const text = scene.add
       .text(0, 1, label, {
@@ -58,5 +57,19 @@ export class Button extends Phaser.GameObjects.Container {
         yoyo: true,
       })
     })
+    this.face.on(Phaser.Input.Events.POINTER_OVER, () => this.drawFace(GAME_STYLE.color.mutedInk, width, height))
+    this.face.on(Phaser.Input.Events.POINTER_OUT, () => this.drawFace(fill, width, height))
+  }
+
+  private drawFace(fill: number, width: number, height: number): void {
+    this.face.clear()
+    this.face.fillStyle(fill, 1)
+    this.face.fillRoundedRect(-width / 2, -height / 2, width, height, 8)
+    this.face.lineStyle(
+      GAME_STYLE.dialog.borderWidth,
+      GAME_STYLE.color.paperLight,
+      GAME_STYLE.alpha.rule,
+    )
+    this.face.strokeRoundedRect(-width / 2, -height / 2, width, height, 8)
   }
 }

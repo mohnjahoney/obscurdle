@@ -79,7 +79,8 @@ export class ModeIconTile extends Phaser.GameObjects.Container {
   }
 
   private drawFace(face: Phaser.GameObjects.Graphics, dark: boolean, hovered: boolean): void {
-    const fill = dark ? (hovered ? GAME_STYLE.color.mutedInk : GAME_STYLE.color.ink) : GAME_STYLE.color.paperLight
+    // const fill = dark ? GAME_STYLE.color.mutedInk : GAME_STYLE.color.paperLight
+    const fill = dark ? GAME_STYLE.color.absent : GAME_STYLE.color.paperLight
     const stroke = dark ? GAME_STYLE.color.paperLight : hovered ? GAME_STYLE.color.ink : GAME_STYLE.color.rule
     const alpha = dark ? 0.82 : GAME_STYLE.alpha.rule
     face.clear()
@@ -141,7 +142,7 @@ function drawModeIcon(
       graphics.fillStyle(accent, 1)
       graphics.fillTriangle(0, -26, -9, 2, 0, 7)
       graphics.fillTriangle(0, -26, 9, 2, 0, 7)
-      graphics.fillStyle(dark ? GAME_STYLE.color.ink : GAME_STYLE.color.paperLight, 1)
+      graphics.fillStyle(GAME_STYLE.color.ink, 0.35)
       graphics.fillTriangle(0, -12, -4, 0, 0, 4)
       graphics.fillTriangle(0, -12, 4, 0, 0, 4)
       break
@@ -155,8 +156,8 @@ function drawModeIcon(
 }
 
 function drawSwitchArrow(graphics: Phaser.GameObjects.Graphics, color: number, alpha: number): void {
-  const upperToLower = [[-28, -12], [-6, -21], [6, 21], [28, 12]] as const
-  const lowerToUpper = [[28, -12], [6, -21], [-6, 21], [-28, 12]] as const
+  const upperToLower = [[-28, -12], [10, -16], [-10, 16], [28, 12]] as const
+  const lowerToUpper = [[28, -12], [-10, -16], [10, 16], [-28, 12]] as const
   const drawPath = (points: readonly (readonly [number, number])[]): void => {
     graphics.beginPath()
     graphics.moveTo(points[0]![0], points[0]![1])
@@ -175,6 +176,28 @@ function drawSwitchArrow(graphics: Phaser.GameObjects.Graphics, color: number, a
     }
     graphics.strokePath()
   }
+
+// function drawSwitchArrow(graphics: Phaser.GameObjects.Graphics, color: number, alpha: number): void {
+//   const upperToLower = [[-28, -12], [-6, -21], [6, 21], [28, 12]] as const
+//   const lowerToUpper = [[28, -12], [6, -21], [-6, 21], [-28, 12]] as const
+//   const drawPath = (points: readonly (readonly [number, number])[]): void => {
+//     graphics.beginPath()
+//     graphics.moveTo(points[0]![0], points[0]![1])
+//     for (let i = 1; i <= 16; i += 1) {
+//       const t = i / 16
+//       const inverse = 1 - t
+//       const x = inverse ** 3 * points[0]![0]
+//         + 3 * inverse ** 2 * t * points[1]![0]
+//         + 3 * inverse * t ** 2 * points[2]![0]
+//         + t ** 3 * points[3]![0]
+//       const y = inverse ** 3 * points[0]![1]
+//         + 3 * inverse ** 2 * t * points[1]![1]
+//         + 3 * inverse * t ** 2 * points[2]![1]
+//         + t ** 3 * points[3]![1]
+//       graphics.lineTo(x, y)
+//     }
+//     graphics.strokePath()
+//   }
 
   // A small dark keyline keeps the two switching paths legible where they cross.
   graphics.lineStyle(5, GAME_STYLE.color.ink, 1)
@@ -228,7 +251,7 @@ function drawSneakingTilesIcon(
   graphics.strokeRect(0, -15, 20, 20)
   graphics.lineStyle(2, ink, 0.9)
   graphics.strokeRect(-32, -10, 20, 20)
-  graphics.strokeRect(-10, -10, 20, 20)
+  // graphics.strokeRect(-10, -10, 20, 20)
   graphics.strokeRect(12, -10, 20, 20)
 }
 

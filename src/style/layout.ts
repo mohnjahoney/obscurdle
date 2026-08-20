@@ -6,7 +6,7 @@ export const GAME_LAYOUT = {
   },
   masthead: {
     top: 17,
-    titleY: 44,
+    titleY: 57,
     deckY: 77,
     topRuleY: 16,
     bottomRuleY: 98,
@@ -52,12 +52,14 @@ export const GAME_LAYOUT = {
   },
   dialog: {
     width: 338,
-    height: 240,
+    height: 270,
     y: 370,
-    titleOffsetY: -67,
-    bodyOffsetY: -19,
-    primaryButtonOffsetY: 47,
-    secondaryButtonOffsetY: 91,
+    titleOffsetY: -83,
+    bodyOffsetY: -36,
+    answerLabelOffsetY: -57,
+    answerWordOffsetY: -21,
+    primaryButtonOffsetY: 51,
+    secondaryButtonOffsetY: 98,
   },
   navigation: {
     indexX: 382,
