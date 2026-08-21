@@ -26,7 +26,7 @@ export interface ObscuringMode {
   presentationState(): ModePresentationState
   start(context: ModeContext): void
   transformSubmittedWord?(context: GuessTransformContext): string
-  onGuessSubmitted?(context: ModeContext, row: number): void
+  onGuessSubmitted?(context: ModeContext, row: number, displayWord?: string): void
   onLetterLegible?(row: number, column: number): boolean | void
   onSceneEffectControlChange?(name: string, value: number): boolean | void
   update(context: ModeContext, deltaMs: number): boolean

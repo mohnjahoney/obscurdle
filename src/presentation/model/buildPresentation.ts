@@ -39,6 +39,7 @@ function emptyCell(): LetterCellPresentationModel {
 function buildBoard(
   puzzle: PuzzleState,
   configuration: PresentationConfiguration,
+  displayWords: ReadonlyMap<number, string> = new Map(),
 ): BoardPresentationModel {
   const rows = Array.from({ length: MAX_GUESSES }, () =>
     Array.from({ length: WORD_LENGTH }, emptyCell),
@@ -46,7 +47,8 @@ function buildBoard(
 
   puzzle.guesses.forEach((guess, row) => {
     for (let column = 0; column < WORD_LENGTH; column += 1) {
-      const letter = guess.word[column]
+      const displayWord = displayWords.get(row) ?? guess.word
+      const letter = displayWord[column]
       const evaluation = guess.evaluation[column]
       if (letter && evaluation) {
         rows[row]![column] = {
@@ -195,7 +197,11 @@ export function buildPresentation(
   mode: ModePresentationState,
   now: number,
 ): PresentationModel {
-  const baseBoard = buildBoard(puzzle, configuration)
+  const displayWords =
+    mode.kind === "misprint"
+      ? new Map(mode.displayWords.map(({ row, word }) => [row, word] as const))
+      : new Map<number, string>()
+  const baseBoard = buildBoard(puzzle, configuration, displayWords)
   const misprintLegibleCells =
     mode.kind === "misprint"
       ? new Set(

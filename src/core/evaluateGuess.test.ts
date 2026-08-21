@@ -2,6 +2,35 @@ import { describe, expect, it } from "vitest"
 import { evaluateGuess } from "./evaluateGuess"
 
 describe("evaluateGuess", () => {
+  it.each([
+    ["no t", "SCARE", ["absent", "present", "present", "absent", "absent"]],
+    ["t1", "TXXXX", ["correct", "absent", "absent", "absent", "absent"]],
+    ["t2", "XTXXX", ["absent", "present", "absent", "absent", "absent"]],
+    ["t5", "XXXXT", ["absent", "absent", "absent", "absent", "correct"]],
+    [
+      "t1 + t2",
+      "TTXXX",
+      ["correct", "present", "absent", "absent", "absent"],
+    ],
+    [
+      "t1 + t5",
+      "TXXXT",
+      ["correct", "absent", "absent", "absent", "correct"],
+    ],
+    [
+      "t2 + t3",
+      "XTTXX",
+      ["absent", "present", "present", "absent", "absent"],
+    ],
+    [
+      "t2 + t5",
+      "XTXXT",
+      ["absent", "present", "absent", "absent", "correct"],
+    ],
+  ])("scores TACIT: %s", (_scenario, guess, expected) => {
+    expect(evaluateGuess(guess, "TACIT")).toEqual(expected)
+  })
+
   it("marks an all-correct guess", () => {
     expect(evaluateGuess("APPLE", "APPLE")).toEqual([
       "correct",

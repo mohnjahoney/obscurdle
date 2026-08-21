@@ -40,7 +40,6 @@ describe("buildPresentation", () => {
       puzzleState({
         guesses: [
           {
-            enteredWord: "ALERT",
             word: "ALERT",
             evaluation: ["absent", "present", "correct", "present", "correct"],
           },
@@ -93,12 +92,10 @@ describe("buildPresentation", () => {
         currentGuess: "A",
         guesses: [
           {
-            enteredWord: "ALERT",
             word: "ALERT",
             evaluation: ["present", "absent", "absent", "absent", "absent"],
           },
           {
-            enteredWord: "CROAK",
             word: "CROAK",
             evaluation: ["correct", "present", "absent", "correct", "absent"],
           },
@@ -130,7 +127,6 @@ describe("buildPresentation", () => {
     const state = puzzleState({
       guesses: [
         {
-          enteredWord: "ALERT",
           word: "ALERT",
           evaluation: ["present", "absent", "absent", "absent", "absent"],
         },
@@ -175,7 +171,6 @@ describe("buildPresentation", () => {
       puzzleState({
         guesses: [
           {
-            enteredWord: "ALERT",
             word: "ALERT",
             evaluation: ["present", "absent", "absent", "absent", "absent"],
           },
@@ -221,8 +216,7 @@ describe("buildPresentation", () => {
       puzzleState({
         guesses: [
           {
-            enteredWord: "ALIEN",
-            word: "ALERT",
+            word: "ALIEN",
             evaluation: ["present", "absent", "correct", "absent", "absent"],
           },
         ],
@@ -230,6 +224,7 @@ describe("buildPresentation", () => {
       { board: "tiles", keyboard: "digital" },
       {
         kind: "misprint",
+        displayWords: [{ row: 0, word: "ALERT" }],
         legibleCells: [
           { row: 0, column: 0 },
           { row: 0, column: 2 },
@@ -245,11 +240,52 @@ describe("buildPresentation", () => {
     })
     expect(presentation.keyboard.evaluations).toEqual({
       A: "present",
-      E: "correct",
+      I: "correct",
     })
     expect(presentation.footer.text).toBe(
       "MISPRINT EDITION  ·  SIX GUESSES  ·  FIVE LETTERS",
     )
+  })
+
+  it("renders Misprint letters separately from the actual scored word", () => {
+    const evaluation = ["absent", "present", "correct", "absent", "correct"] as const
+    const presentation = buildPresentation(
+      puzzleState({
+        guesses: [{ word: "CRATE", evaluation: [...evaluation] }],
+      }),
+      { board: "tiles", keyboard: "digital" },
+      {
+        kind: "misprint",
+        displayWords: [{ row: 0, word: "CRANE" }],
+        legibleCells: [
+          { row: 0, column: 0 },
+          { row: 0, column: 1 },
+          { row: 0, column: 2 },
+          { row: 0, column: 3 },
+          { row: 0, column: 4 },
+        ],
+      },
+      2_000,
+    )
+
+    expect(presentation.board.rows[0]?.map((cell) => cell.letter)).toEqual([
+      "C",
+      "R",
+      "A",
+      "N",
+      "E",
+    ])
+    expect(presentation.board.rows[0]?.map((cell) => cell.evaluation)).toEqual([
+      ...evaluation,
+    ])
+    expect(presentation.keyboard.evaluations).toEqual({
+      C: "absent",
+      R: "present",
+      A: "correct",
+      T: "absent",
+      E: "correct",
+    })
+    expect(presentation.keyboard.evaluations.N).toBeUndefined()
   })
 
   it("projects Flashlight controller state as a whole-view effect", () => {

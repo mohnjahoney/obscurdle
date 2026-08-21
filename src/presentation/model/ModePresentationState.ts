@@ -46,6 +46,7 @@ export interface MisprintLegibleCellPresentationState {
 
 export interface MisprintModePresentationState {
   kind: "misprint"
+  displayWords: readonly { row: number; word: string }[]
   legibleCells: readonly MisprintLegibleCellPresentationState[]
 }
 

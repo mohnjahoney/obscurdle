@@ -1,26 +1,33 @@
 import type { GuessTransformContext } from "../../core/Puzzle"
 import type { MisprintModePresentationState } from "../../presentation/model/ModePresentationState"
-import type { ObscuringMode } from "../ObscuringMode"
+import type { ModeContext, ObscuringMode } from "../ObscuringMode"
 import { MISPRINT_CONFIG } from "./misprintConfig"
 import { selectMisprintWord } from "./selectMisprintWord"
 
 export class MisprintMode implements ObscuringMode {
   private readonly legibleCells = new Set<string>()
+  private readonly displayWords = new Map<number, string>()
 
   constructor(private readonly random: () => number = Math.random) {}
 
   start(): void {
     this.legibleCells.clear()
+    this.displayWords.clear()
   }
 
   presentationState(): MisprintModePresentationState {
     return {
       kind: "misprint",
+      displayWords: Array.from(this.displayWords, ([row, word]) => ({ row, word })),
       legibleCells: Array.from(this.legibleCells, (key) => {
         const [row, column] = key.split(":").map(Number)
         return { row: row!, column: column! }
       }),
     }
+  }
+
+  onGuessSubmitted(_context: ModeContext, row: number, displayWord?: string): void {
+    if (displayWord) this.displayWords.set(row, displayWord)
   }
 
   transformSubmittedWord(context: GuessTransformContext): string {

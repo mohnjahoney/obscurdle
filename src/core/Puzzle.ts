@@ -10,7 +10,6 @@ export const MAX_GUESSES = 6
 export type PuzzleStatus = "playing" | "won" | "lost"
 
 export interface SubmittedGuess {
-  enteredWord: string
   word: string
   evaluation: LetterResult[]
 }
@@ -31,6 +30,7 @@ export type SubmitResult =
       ok: true
       row: number
       guess: SubmittedGuess
+      displayWord: string
       status: PuzzleStatus
     }
   | {
@@ -46,14 +46,16 @@ export interface PuzzleState {
 }
 
 export class Puzzle {
-  readonly answer: string
+  answer: string
   private readonly allowedWords: ReadonlySet<string>
   private current = ""
   private submitted: SubmittedGuess[] = []
   private puzzleStatus: PuzzleStatus = "playing"
+  private checkAgainstList: boolean
 
-  constructor(answer: string, allowedWords: Iterable<string>) {
+  constructor(answer: string, allowedWords: Iterable<string>, checkAgainstList = true) {
     this.answer = normalizeWord(answer)
+    this.checkAgainstList = checkAgainstList
     if (this.answer.length !== WORD_LENGTH) {
       throw new Error(`Answer must contain ${WORD_LENGTH} letters`)
     }
@@ -61,6 +63,17 @@ export class Puzzle {
     this.allowedWords = new Set(
       Array.from(allowedWords, normalizeWord).filter((word) => word.length === WORD_LENGTH),
     )
+  }
+
+  /** Development-only answer override. It does not reset guesses or status. */
+  setDevAnswer(answerInput: string): void {
+    const answer = normalizeWord(answerInput)
+    if (answer.length === WORD_LENGTH) this.answer = answer
+  }
+
+  /** Development-only switch for testing arbitrary five-letter sequences. */
+  setListChecking(enabled: boolean): void {
+    this.checkAgainstList = enabled
   }
 
   get currentGuess(): string {
@@ -100,7 +113,7 @@ export class Puzzle {
       return { ok: false, reason: "incomplete" }
     }
 
-    if (!this.allowedWords.has(this.current)) {
+    if (this.checkAgainstList && !this.allowedWords.has(this.current)) {
       return { ok: false, reason: "invalid" }
     }
 
@@ -113,21 +126,21 @@ export class Puzzle {
         submittedWords: this.submitted.map((guess) => guess.word),
       }) ?? enteredWord,
     )
-    const word =
-      transformedWord.length === WORD_LENGTH && this.allowedWords.has(transformedWord)
+    const displayWord =
+      transformedWord.length === WORD_LENGTH &&
+      (!this.checkAgainstList || this.allowedWords.has(transformedWord))
         ? transformedWord
         : enteredWord
     const guess: SubmittedGuess = {
-      enteredWord,
-      word,
-      evaluation: evaluateGuess(word, this.answer),
+      word: enteredWord,
+      evaluation: evaluateGuess(enteredWord, this.answer),
     }
     const row = this.submitted.length
 
     this.submitted = [...this.submitted, guess]
     this.current = ""
 
-    if (word === this.answer) {
+    if (enteredWord === this.answer) {
       this.puzzleStatus = "won"
     } else if (this.submitted.length === MAX_GUESSES) {
       this.puzzleStatus = "lost"
@@ -137,6 +150,7 @@ export class Puzzle {
       ok: true,
       row,
       guess,
+      displayWord,
       status: this.puzzleStatus,
     }
   }

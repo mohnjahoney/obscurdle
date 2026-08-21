@@ -34,6 +34,14 @@ describe("Puzzle", () => {
     expect(puzzle.submitGuess()).toEqual({ ok: false, reason: "invalid" })
   })
 
+  it("can evaluate an arbitrary five-letter sequence when list checking is off", () => {
+    const puzzle = new Puzzle("APPLE", WORDS, false)
+    enterWord(puzzle, "QZXJV")
+
+    expect(puzzle.submitGuess()).toMatchObject({ ok: true })
+    expect(puzzle.guesses[0]?.word).toBe("QZXJV")
+  })
+
   it("transitions to won", () => {
     const puzzle = new Puzzle("APPLE", WORDS)
     enterWord(puzzle, "APPLE")
@@ -42,7 +50,7 @@ describe("Puzzle", () => {
     expect(puzzle.status).toBe("won")
   })
 
-  it("scores and stores a transformed word while preserving what was entered", () => {
+  it("scores the submitted word while preserving a transformed display word", () => {
     const puzzle = new Puzzle("APPLE", WORDS)
     enterWord(puzzle, "SLATE")
 
@@ -51,17 +59,33 @@ describe("Puzzle", () => {
     expect(result).toMatchObject({
       ok: true,
       guess: {
-        enteredWord: "SLATE",
-        word: "STARE",
+        word: "SLATE",
       },
+    })
+    expect(result.ok && result.displayWord).toBe("STARE")
+    expect(puzzle.snapshot().guesses[0]).toEqual({
+      word: "SLATE",
+      evaluation: ["absent", "present", "present", "absent", "correct"],
     })
     expect(puzzle.guesses[0]?.evaluation).toEqual([
       "absent",
-      "absent",
+      "present",
       "present",
       "absent",
       "correct",
     ])
+  })
+
+  it("does not win when only the display word matches the answer", () => {
+    const puzzle = new Puzzle("APPLE", WORDS)
+    enterWord(puzzle, "SLATE")
+
+    const result = puzzle.submitGuess(() => "APPLE")
+
+    expect(result).toMatchObject({ ok: true, status: "playing" })
+    expect(result.ok && result.guess.word).toBe("SLATE")
+    expect(result.ok && result.displayWord).toBe("APPLE")
+    expect(puzzle.status).toBe("playing")
   })
 
   it("falls back to the entered word if a transformer returns an invalid word", () => {
@@ -73,7 +97,6 @@ describe("Puzzle", () => {
     expect(result).toMatchObject({
       ok: true,
       guess: {
-        enteredWord: "SLATE",
         word: "SLATE",
       },
     })

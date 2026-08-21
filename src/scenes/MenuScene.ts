@@ -6,6 +6,7 @@ import { ModeIconTile, modeTilePosition } from "../presentation/ModeIconTile"
 import { GAME_LAYOUT } from "../style/layout"
 import { GAME_STYLE } from "../style/gameStyle"
 import { configureLogicalCamera, RENDER_SCALE } from "../style/rendering"
+import { trackObscurdleEvent } from "../analytics/tracker"
 
 type SplashPhase =
   | "cursor"
@@ -315,6 +316,7 @@ export class MenuScene extends Phaser.Scene {
 
   private startGame(modeId: ModeId): void {
     markPlayHistory(modeId)
+    trackObscurdleEvent(`obscurdle:game_started:${modeId}`)
     this.scene.start("play", { modeId })
   }
 

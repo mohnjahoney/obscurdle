@@ -37,6 +37,8 @@ import { GAME_STYLE } from "../style/gameStyle"
 import { GAME_LAYOUT } from "../style/layout"
 import { GAME_MOTION } from "../style/motion"
 import { configureLogicalCamera, RENDER_SCALE } from "../style/rendering"
+import { devListChecking, devTargetOverride } from "../core/devTarget"
+import { DevTargetControl } from "../presentation/DevTargetControl"
 
 const wordSource = new BundledWordSource()
 
@@ -66,6 +68,7 @@ export class PlayScene extends Phaser.Scene {
   private modeId: ModeId = "plain"
   private mode!: ObscuringMode
   private modeContext!: ModeContext
+  private devTarget!: DevTargetControl
 
   constructor() {
     super("play")
@@ -83,7 +86,15 @@ export class PlayScene extends Phaser.Scene {
   create(): void {
     markPlayHistory(this.modeId)
     configureLogicalCamera(this)
-    this.puzzle = new Puzzle(wordSource.chooseAnswer(), wordSource.allowedWords())
+    this.puzzle = new Puzzle(
+      devTargetOverride() ?? wordSource.chooseAnswer(),
+      wordSource.allowedWords(),
+      devListChecking(),
+    )
+    this.devTarget = new DevTargetControl(this, (target) => {
+      this.puzzle.setDevAnswer(target)
+      this.applyCurrentPresentation()
+    }, (enabled) => this.puzzle.setListChecking(enabled), () => this.puzzle.answer)
     this.keyboardPresentation = loadKeyboardPresentation()
     this.boardPresentation = loadBoardPresentation()
     this.presentationConfiguration = {
@@ -97,10 +108,15 @@ export class PlayScene extends Phaser.Scene {
       letterBasePlacementAt: (row, column) => {
         const puzzle = this.puzzle.snapshot()
         const submittedGuess = puzzle.guesses[row]
+        const modeState = this.mode.presentationState()
+        const displayWord =
+          modeState.kind === "misprint"
+            ? modeState.displayWords.find((entry) => entry.row === row)?.word
+            : undefined
         const word = submittedGuess
           ? this.presentationConfiguration.board === "bare"
-            ? editorialWord(submittedGuess.word, submittedGuess.evaluation)
-            : submittedGuess.word
+            ? editorialWord(displayWord ?? submittedGuess.word, submittedGuess.evaluation)
+            : displayWord ?? submittedGuess.word
           : row === puzzle.guesses.length
             ? this.presentationConfiguration.board === "bare"
               ? editorialWord(puzzle.currentGuess)
@@ -124,7 +140,8 @@ export class PlayScene extends Phaser.Scene {
       new PaperBackdrop(this)
     }
 
-    this.createMasthead(initialPresentation.masthead)
+    const masthead = this.createMasthead(initialPresentation.masthead)
+    this.devTarget.attachToTitle(masthead)
     this.board = this.createBoard(initialPresentation.board.kind)
     this.board.apply(initialPresentation.board)
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -163,7 +180,13 @@ export class PlayScene extends Phaser.Scene {
     })
 
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
-      if (event.key === "Enter") {
+      if (/^[a-zA-Z]$/.test(event.key) && this.devTarget.handleLetter(event.key)) {
+        event.preventDefault()
+      } else if (event.key === "Enter" && this.devTarget.handleEnter()) {
+        event.preventDefault()
+      } else if ((event.key === "Backspace" || event.key === "Delete") && this.devTarget.handleBackspace()) {
+        event.preventDefault()
+      } else if (event.key === "Enter") {
         this.submit()
       } else if (event.key === "Backspace" || event.key === "Delete") {
         this.backspace()
@@ -223,9 +246,15 @@ export class PlayScene extends Phaser.Scene {
     return new KeyboardView(
       this,
       {
-        onLetter: (letter) => this.typeLetter(letter),
-        onEnter: () => this.submit(),
-        onBackspace: () => this.backspace(),
+        onLetter: (letter) => {
+          if (!this.devTarget.handleLetter(letter)) this.typeLetter(letter)
+        },
+        onEnter: () => {
+          if (!this.devTarget.handleEnter()) this.submit()
+        },
+        onBackspace: () => {
+          if (!this.devTarget.handleBackspace()) this.backspace()
+        },
       },
       presentationId,
     )
@@ -314,7 +343,7 @@ export class PlayScene extends Phaser.Scene {
       return
     }
 
-    this.mode.onGuessSubmitted?.(this.modeContext, result.row)
+    this.mode.onGuessSubmitted?.(this.modeContext, result.row, result.displayWord)
     this.applyCurrentPresentation()
     this.acceptingInput = result.status === "playing"
     this.scheduleResult(result.status, result.guess.word.length)
