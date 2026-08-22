@@ -39,6 +39,7 @@ import { GAME_MOTION } from "../style/motion"
 import { configureLogicalCamera, RENDER_SCALE } from "../style/rendering"
 import { devListChecking, devTargetOverride } from "../core/devTarget"
 import { DevTargetControl } from "../presentation/DevTargetControl"
+import { startPuzzleAnalytics, trackObscurdleEvent } from "../analytics/tracker"
 
 const wordSource = new BundledWordSource()
 
@@ -69,6 +70,10 @@ export class PlayScene extends Phaser.Scene {
   private mode!: ObscuringMode
   private modeContext!: ModeContext
   private devTarget!: DevTargetControl
+  private puzzleId = ""
+  private puzzleNumber = 0
+  private puzzleStartedAt = 0
+  private puzzleResultTracked = false
 
   constructor() {
     super("play")
@@ -91,6 +96,16 @@ export class PlayScene extends Phaser.Scene {
       wordSource.allowedWords(),
       devListChecking(),
     )
+    const puzzleAnalytics = startPuzzleAnalytics()
+    this.puzzleId = puzzleAnalytics.puzzleId
+    this.puzzleNumber = puzzleAnalytics.puzzleNumber
+    this.puzzleStartedAt = performance.now()
+    trackObscurdleEvent("obscurdle:puzzle_started", {
+      puzzleId: this.puzzleId,
+      puzzleNumber: this.puzzleNumber,
+      puzzleMode: this.modeId,
+      targetWord: this.puzzle.answer,
+    })
     this.devTarget = new DevTargetControl(this, (target) => {
       this.puzzle.setDevAnswer(target)
       this.applyCurrentPresentation()
@@ -344,6 +359,14 @@ export class PlayScene extends Phaser.Scene {
     }
 
     this.mode.onGuessSubmitted?.(this.modeContext, result.row, result.displayWord)
+    trackObscurdleEvent("obscurdle:word_submitted", {
+      puzzleId: this.puzzleId,
+      puzzleNumber: this.puzzleNumber,
+      puzzleMode: this.modeId,
+      submissionNumber: result.row + 1,
+      word: result.guess.word,
+      elapsedMs: Math.max(0, Math.round(performance.now() - this.puzzleStartedAt)),
+    })
     this.applyCurrentPresentation()
     this.acceptingInput = result.status === "playing"
     this.scheduleResult(result.status, result.guess.word.length)
@@ -412,6 +435,21 @@ export class PlayScene extends Phaser.Scene {
   }
 
   private showResult(status: PuzzleStatus): void {
+    if (!this.puzzleResultTracked) {
+      this.puzzleResultTracked = true
+      trackObscurdleEvent("obscurdle:puzzle_ended", {
+        puzzleId: this.puzzleId,
+        puzzleNumber: this.puzzleNumber,
+        puzzleMode: this.modeId,
+        outcome: status,
+        targetWord: this.puzzle.answer,
+        elapsedMs: Math.max(0, Math.round(performance.now() - this.puzzleStartedAt)),
+        wordSequence: [
+          this.puzzle.answer,
+          ...this.puzzle.guesses.map((guess) => guess.word),
+        ],
+      })
+    }
     this.time.delayedCall(GAME_MOTION.dialog.delayAfterReveal, () => {
       this.mode.stop(this.modeContext)
       this.applyCurrentPresentation()

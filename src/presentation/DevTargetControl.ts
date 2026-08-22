@@ -128,7 +128,8 @@ export class DevTargetControl extends Phaser.GameObjects.Container {
     const bounds = title.getBounds()
     this.titleHitDebug
       .setPosition(bounds.x, bounds.y)
-      .setVisible(true)
+      // Keep the D hit area active while hiding its developer-only rectangle.
+      .setVisible(false)
       .clear()
     this.titleHitDebug.fillStyle(GAME_STYLE.color.present, 0.16)
     this.titleHitDebug.fillRect(hitRect.x, hitRect.y, hitRect.width, hitRect.height)

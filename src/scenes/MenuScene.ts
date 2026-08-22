@@ -6,7 +6,7 @@ import { ModeIconTile, modeTilePosition } from "../presentation/ModeIconTile"
 import { GAME_LAYOUT } from "../style/layout"
 import { GAME_STYLE } from "../style/gameStyle"
 import { configureLogicalCamera, RENDER_SCALE } from "../style/rendering"
-import { trackObscurdleEvent } from "../analytics/tracker"
+import { setSessionName, trackObscurdleEvent, trackSessionStarted } from "../analytics/tracker"
 
 type SplashPhase =
   | "cursor"
@@ -17,6 +17,7 @@ type SplashPhase =
   | "blank"
   | "revealing"
   | "invertedHold"
+  | "nameEntry"
   | "returning"
   | "settling"
   | "menu"
@@ -29,6 +30,8 @@ const CURSOR_BLINK_PERIOD = 0.34
 const CURSOR_BLINKS_BEFORE_TYPING = 2
 const REVEAL_DURATION = 1.65
 const INVERTED_HOLD_DURATION = 1
+const NAME_PROMPT_DELAY = 0.45
+const NAME_MAX_LENGTH = 32
 const RETURN_DURATION = 2.25
 const SKIP_DURATION = 0.75
 const BUTTON_FADE_DELAY = 0.12
@@ -52,6 +55,12 @@ export class MenuScene extends Phaser.Scene {
   private returnDuration = RETURN_DURATION
   private cursorStaticElapsed = 0
   private cursorLastX = 0
+  private namePrompt?: Phaser.GameObjects.Text
+  private nameText?: Phaser.GameObjects.Text
+  private nameCursor?: Phaser.GameObjects.Graphics
+  private nameSkip?: Phaser.GameObjects.Text
+  private nameValue = ""
+  private nameCursorElapsed = 0
 
   constructor() { super("menu") }
 
@@ -101,6 +110,7 @@ export class MenuScene extends Phaser.Scene {
     else if (this.phase === "blank") this.updateBlank()
     else if (this.phase === "revealing") this.updateReveal()
     else if (this.phase === "invertedHold") this.updateInvertedHold()
+    else if (this.phase === "nameEntry") this.updateNameEntry(deltaMs / 1000)
     else if (this.phase === "returning") this.updateReturning()
     else if (this.phase === "settling") this.updateSettling()
     this.updateCursor(deltaMs / 1000)
@@ -181,11 +191,96 @@ export class MenuScene extends Phaser.Scene {
     this.blackout.setAlpha(1)
     this.titleText.setColor(GAME_STYLE.textColor.paperLight).setAlpha(0.14)
     if (this.phaseElapsed < INVERTED_HOLD_DURATION) return
+    this.phase = "nameEntry"
+    this.phaseElapsed = 0
+    this.createNameEntry()
+  }
+
+  private updateNameEntry(deltaSeconds = 0): void {
+    this.nameCursorElapsed += deltaSeconds
+    this.updateNameCursor()
+  }
+
+  private createNameEntry(): void {
+    this.nameValue = ""
+    this.nameCursorElapsed = 0
+    this.namePrompt = this.add
+      .text(GAME_LAYOUT.width / 2, 322, "What shall we call you today?", {
+        fontFamily: GAME_STYLE.type.displayFamily,
+        fontSize: "21px",
+        color: GAME_STYLE.textColor.paperLight,
+        resolution: RENDER_SCALE,
+      })
+      .setOrigin(0.5)
+      .setAlpha(0)
+      .setDepth(8)
+    this.nameText = this.add
+      .text(GAME_LAYOUT.width / 2, 378, "", {
+        fontFamily: "'Courier New', monospace",
+        fontSize: "27px",
+        color: GAME_STYLE.textColor.paperLight,
+        resolution: RENDER_SCALE,
+      })
+      .setOrigin(0.5)
+      .setDepth(8)
+    this.nameCursor = this.add.graphics().setDepth(8)
+    this.nameSkip = this.add
+      .text(GAME_LAYOUT.width / 2, 438, "SKIP FOR NOW", {
+        fontFamily: GAME_STYLE.type.bodyFamily,
+        fontSize: `${GAME_STYLE.type.footerSize}px`,
+        fontStyle: "bold",
+        color: GAME_STYLE.textColor.paperLight,
+        resolution: RENDER_SCALE,
+      })
+      .setOrigin(0.5)
+      .setAlpha(0.55)
+      .setDepth(8)
+      .setInteractive({ useHandCursor: true })
+    this.nameSkip.on(Phaser.Input.Events.POINTER_DOWN, () => this.finishNameEntry(""))
+    this.tweens.add({
+      targets: [this.namePrompt, this.nameText],
+      alpha: 1,
+      duration: 700,
+      delay: NAME_PROMPT_DELAY * 1000,
+      ease: "Sine.easeOut",
+    })
+    this.updateNameCursor()
+  }
+
+  private updateNameCursor(): void {
+    if (!this.nameCursor || !this.nameText) return
+    const blinkOn = Math.floor(this.nameCursorElapsed / CURSOR_BLINK_PERIOD) % 2 === 0
+    const cursorX = this.nameText.x + this.nameText.width / 2 + 5
+    this.nameCursor.setPosition(cursorX, this.nameText.y)
+    this.nameCursor.clear()
+    this.nameCursor.fillStyle(GAME_STYLE.color.paperLight, 0.32)
+    this.nameCursor.fillRoundedRect(0, -16, 3, 32, 1)
+    this.nameCursor.setVisible(blinkOn)
+  }
+
+  private finishNameEntry(name: string): void {
+    if (this.phase !== "nameEntry") return
+    setSessionName(name)
+    trackSessionStarted()
+    this.destroyNameEntry()
     this.phase = "returning"
     this.phaseElapsed = 0
-    this.returnStartBlackoutAlpha = 1
+    this.returnStartBlackoutAlpha = this.blackout.alpha
     this.returnDuration = RETURN_DURATION
+    this.titleText.setText(TITLE).setColor(GAME_STYLE.textColor.ink)
+    this.resetCursorStaticTime()
     this.createModeMenu(true, BUTTON_FADE_DELAY)
+  }
+
+  private destroyNameEntry(): void {
+    this.namePrompt?.destroy()
+    this.nameText?.destroy()
+    this.nameCursor?.destroy()
+    this.nameSkip?.destroy()
+    this.namePrompt = undefined
+    this.nameText = undefined
+    this.nameCursor = undefined
+    this.nameSkip = undefined
   }
 
   private updateReturning(): void {
@@ -226,7 +321,7 @@ export class MenuScene extends Phaser.Scene {
       this.cursorStaticElapsed += deltaSeconds
     }
     this.cursor.x = nextX
-    const cursorGone = this.phase === "blank" || this.phase === "revealing" || this.phase === "invertedHold" || this.phase === "returning" || this.phase === "settling" || this.phase === "menu"
+    const cursorGone = this.phase === "blank" || this.phase === "revealing" || this.phase === "invertedHold" || this.phase === "nameEntry" || this.phase === "returning" || this.phase === "settling" || this.phase === "menu"
     if (cursorGone) {
       this.cursor.setVisible(false)
       return
@@ -289,19 +384,53 @@ export class MenuScene extends Phaser.Scene {
   private bindIntroInput(): void {
     if (this.introInputBound) return
     this.introInputBound = true
-    this.input.keyboard?.on("keydown", this.handleIntroInput, this)
+    this.input.keyboard?.on("keydown", this.handleIntroKeyDown, this)
     this.input.on(Phaser.Input.Events.POINTER_DOWN, this.handleIntroInput, this)
   }
 
   private unbindIntroInput(): void {
     if (!this.introInputBound) return
     this.introInputBound = false
-    this.input.keyboard?.off("keydown", this.handleIntroInput, this)
+    this.input.keyboard?.off("keydown", this.handleIntroKeyDown, this)
     this.input.off(Phaser.Input.Events.POINTER_DOWN, this.handleIntroInput, this)
   }
 
+  private readonly handleIntroKeyDown = (event: KeyboardEvent): void => {
+    if (this.phase !== "nameEntry") return
+    if (event.key === "Enter") {
+      event.preventDefault()
+      this.finishNameEntry(this.nameValue)
+      return
+    }
+    if (event.key === "Backspace" || event.key === "Delete") {
+      event.preventDefault()
+      this.nameValue = this.nameValue.slice(0, -1)
+      this.nameText?.setText(this.nameValue)
+      this.resetNameCursor()
+      return
+    }
+    if (/^[a-zA-Z0-9 '-]$/.test(event.key) && this.nameValue.length < NAME_MAX_LENGTH) {
+      event.preventDefault()
+      this.nameValue += event.key
+      this.nameText?.setText(this.nameValue)
+      this.resetNameCursor()
+    }
+  }
+
+  private resetNameCursor(): void {
+    this.nameCursorElapsed = 0
+    this.updateNameCursor()
+  }
+
   private readonly handleIntroInput = (): void => {
+    if (this.phase === "nameEntry") return
     if (this.phase === "menu" || this.phase === "returning" || this.phase === "settling") return
+    this.finishIntroWithoutName()
+  }
+
+  private finishIntroWithoutName(): void {
+    setSessionName("")
+    trackSessionStarted()
     this.phase = "returning"
     this.phaseElapsed = 0
     this.returnStartBlackoutAlpha = this.blackout.alpha
@@ -309,9 +438,7 @@ export class MenuScene extends Phaser.Scene {
     this.titleText.setText(TITLE).setColor(GAME_STYLE.textColor.ink)
     this.resetCursorStaticTime()
     if (this.modeTiles.length === 0) this.createModeMenu(true)
-    this.modeTiles.forEach(tile => {
-      tile.setAlpha(1)
-    })
+    this.modeTiles.forEach(tile => tile.setAlpha(1))
   }
 
   private startGame(modeId: ModeId): void {
