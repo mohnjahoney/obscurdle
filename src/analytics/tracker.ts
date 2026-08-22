@@ -1,4 +1,4 @@
-const TRACKER_ENDPOINT = "https://public-data-receiver-test.mohnjahoney.chatgpt.site/api/test"
+export const TRACKER_ENDPOINT = "https://public-data-receiver-test.mohnjahoney.chatgpt.site/api/events"
 
 export interface ObscurdleSessionMetadata {
   name: string
@@ -30,13 +30,13 @@ export function startPuzzleAnalytics(): { puzzleId: string; puzzleNumber: number
   return { puzzleId: createAnalyticsId(), puzzleNumber }
 }
 
-export function trackObscurdleEvent(message: string, details: AnalyticsDetails = {}): void {
+export function trackObscurdleEvent(event: string, details: AnalyticsDetails = {}): void {
   void fetch(TRACKER_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      event: message,
-      message,
+      event,
+      message: event,
       eventId: createAnalyticsId(),
       sessionId,
       occurredAt: new Date().toISOString(),
